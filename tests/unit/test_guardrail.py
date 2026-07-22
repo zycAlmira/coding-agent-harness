@@ -44,6 +44,16 @@ def test_shell_whitelist_allowed():
     assert isinstance(guardrail(RunShell("pytest -q"), _cfg()), Allow)
 
 
+def test_whitelist_not_bypassed_by_substring():
+    # `pytest_evil --delete` 含子串 `pytest`,但首词不是 pytest,不得 Allow
+    assert isinstance(guardrail(RunShell("pytest_evil --delete"), _cfg()), NeedsApproval)
+
+
+def test_whitelist_first_token_match():
+    # 首词精确匹配仍 Allow,带参数/路径不影响
+    assert isinstance(guardrail(RunShell("pytest tests/ -v"), _cfg()), Allow)
+
+
 def test_shell_unknown_needs_approval():
     assert isinstance(guardrail(RunShell("make build"), _cfg()), NeedsApproval)
 
