@@ -60,8 +60,16 @@ class Config:
 
 
 def _filter_known(raw: dict, cls) -> dict:
-    """只保留目标 dataclass 已知字段,忽略 YAML 中多余键。"""
-    return {k: raw[k] for k in raw if k in cls.__dataclass_fields__}
+    """只保留目标 dataclass 已知字段,忽略 YAML 中多余键。
+
+    若某已知字段在 YAML 中显式写空(如 `max_rounds:` 不给值),`raw[k]` 为
+    `None`,此处跳过以让 dataclass 默认值生效,避免 `None` 覆盖默认导致后续消费崩溃。
+    """
+    return {
+        k: raw[k]
+        for k in raw
+        if k in cls.__dataclass_fields__ and raw[k] is not None
+    }
 
 
 def load_config(path: Path | str) -> Config:

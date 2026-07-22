@@ -16,7 +16,7 @@ guardrails:
   shell_whitelist: [pytest, ruff, mypy]
 
 feedback:
-  pytest_args: [--tb=short, -p, no:cacheprovider, --no header, -q]
+  pytest_args: [--tb=short, -p, no:cacheprovider, --no-header, -q]
   max_traceback_excerpt_lines: 8
 
 memory:
