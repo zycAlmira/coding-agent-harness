@@ -148,3 +148,26 @@ class Fix:
     symptom: str
     fix: str
     timestamp: str  # ISO 字符串,由调用方传入(不在循环内取系统时间)
+
+
+# --- 循环步骤与运行结果(Task 14)---
+# Step:一轮完整记录(动作→护栏判定→工具结果→反馈),供回放与日志。
+# RunResult:一次 agent 运行的终局产物。timestamp/ts 由调用方传入,
+# 不在循环内取系统时间,保证 mock LLM 下可确定性单测。
+from typing import Any
+
+
+@dataclass
+class Step:
+    turn: Any          # AssistantTurn
+    verdict: Any       # Verdict
+    tool_result: Any   # ToolResult | None
+    feedback: Any      # Feedback | None
+    ts: str            # 由调用方传入
+
+
+@dataclass
+class RunResult:
+    outcome: str       # Outcome 值
+    steps: list
+    final_feedback: Any = None
