@@ -77,7 +77,7 @@ coding-agent-harness/                     (仓库根 = 当前目录)
 **Interfaces:**
 - Produces: 可 import 的包 `coding_agent_harness`;CLI 入口 `harness`;`make test` 一键跑测试。
 
-- [ ] **Step 1: 写 pyproject.toml**
+- [ ] **Step 1: 写 pyproject.toml**(配置先行,使后续测试的 `pythonpath=src` 生效)
 
 ```toml
 [project]
@@ -111,7 +111,28 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 ```
 
-- [ ] **Step 2: 写 `src/coding_agent_harness/__init__.py`**
+- [ ] **Step 2: 写失败测试 `tests/test_scaffold.py`**(此时 `src/coding_agent_harness/` 尚不存在)
+
+```python
+import importlib
+
+
+def test_package_importable():
+    m = importlib.import_module("coding_agent_harness")
+    assert m.__version__ == "0.1.0"
+```
+
+- [ ] **Step 3: 初始化环境(`uv sync` 在跑红之前,否则红是工具链失败而非断言失败)**
+
+Run: `uv sync --extra dev`
+Expected: 安装依赖,生成 `uv.lock` 与 `.venv`。
+
+- [ ] **Step 4: 跑测试验证失败(断言级红)**
+
+Run: `uv run pytest tests/test_scaffold.py -v`
+Expected: FAIL,`ModuleNotFoundError: No module named 'coding_agent_harness'`(真正的断言级红,非工具链错)。
+
+- [ ] **Step 5: 写最小实现 `src/coding_agent_harness/__init__.py`**
 
 ```python
 """Coding Agent Harness — 自实现的 coding agent 内核。"""
@@ -119,7 +140,12 @@ asyncio_mode = "auto"
 __version__ = "0.1.0"
 ```
 
-- [ ] **Step 3: 写 Makefile**
+- [ ] **Step 6: 跑测试验证通过**
+
+Run: `uv run pytest tests/test_scaffold.py -v`
+Expected: PASS。
+
+- [ ] **Step 7: 写 Makefile 与 .gitignore(脚手架收尾)**
 
 ```makefile
 .PHONY: test run lint
@@ -131,46 +157,19 @@ lint:
 	uv run ruff check src tests
 ```
 
-- [ ] **Step 4: 写 .gitignore**
-
 ```
 __pycache__/
 *.pyc
 .venv/
 .env
 memory/fixes.json
-!memory/fixes.example.json
 .pytest_cache/
 dist/
 ```
 
-- [ ] **Step 5: 写失败测试 `tests/test_scaffold.py`**
+注:`tests/` 与 `tests/unit/` 等子目录**不加 `__init__.py`**,依赖 pytest 的 rootdir + `pythonpath=src` 做导入。
 
-```python
-import importlib
-
-
-def test_package_importable():
-    m = importlib.import_module("coding_agent_harness")
-    assert m.__version__ == "0.1.0"
-```
-
-- [ ] **Step 6: 跑测试验证失败**
-
-Run: `uv run pytest tests/test_scaffold.py -v`
-Expected: FAIL(若 uv 未初始化则先 `uv sync`)。
-
-- [ ] **Step 7: 初始化环境**
-
-Run: `uv sync --extra dev`
-Expected: 安装依赖,生成 `uv.lock` 与 `.venv`。
-
-- [ ] **Step 8: 跑测试验证通过**
-
-Run: `uv run pytest tests/test_scaffold.py -v`
-Expected: PASS。
-
-- [ ] **Step 9: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add pyproject.toml uv.lock Makefile .gitignore src tests
@@ -277,6 +276,7 @@ class AssistantTurn:
 
 
 # --- 护栏判定 ---
+@dataclass
 class Verdict:
     is_approval: bool = False
 

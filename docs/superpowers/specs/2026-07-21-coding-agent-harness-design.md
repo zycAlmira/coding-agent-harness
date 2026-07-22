@@ -211,7 +211,7 @@ Fix = { category, symptom, fix, timestamp }
 LoopState = { rounds, last_category, same_category_streak,
               no_change_streak, feedback_history, steps }
 Step = { turn: AssistantTurn, verdict, tool_result, feedback, ts }
-RunResult = { outcome: SUCCESS|STUCK|MAX_ROUNDS|STOPPED, steps, final_feedback }
+RunResult = { outcome: SUCCESS|STUCK|MAX_ROUNDS|STOPPED|ERROR, steps, final_feedback }
 ```
 
 不变式:`Feedback.failed_tests[].category` ∈ taxonomy;`Step` 中 `approval_request` 后必跟 `approval_decision`。
