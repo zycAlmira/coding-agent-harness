@@ -137,3 +137,14 @@ class Feedback:
     failed_tests: list[FailedTest]
     passed_count: int
     summary: str
+
+
+# --- 记忆 store 产物(Task 10)---
+# Fix:一条修复经验,按 FailureCategory 值索引。timestamp 由调用方传入,
+# 不在循环内取系统时间(保证 mock LLM 下可确定性地单测)。
+@dataclass
+class Fix:
+    category: str   # FailureCategory 值
+    symptom: str
+    fix: str
+    timestamp: str  # ISO 字符串,由调用方传入(不在循环内取系统时间)
