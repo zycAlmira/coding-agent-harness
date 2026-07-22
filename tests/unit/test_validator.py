@@ -46,3 +46,19 @@ def test_traceback_excerpt_truncated_to_config(tmp_path):
     # 超长 traceback 应截断(此例短,仅断言非空)
     fb = Validator.parse(_run("assertion_fail.txt"))
     assert fb.failed_tests[0].traceback_excerpt
+
+
+def test_assertion_diff_from_e_line_fallback():
+    """FAILED 行不带 `- assert...` 后缀时,_ASSERT_LINE 兜底从 `E assert` 行抽 diff。"""
+    fb = Validator.parse(_run("assert_no_diff.txt"))
+    assert fb.status == "FAIL"
+    assert len(fb.failed_tests) == 1
+    ft = fb.failed_tests[0]
+    assert ft.nodeid == "tests/test_z.py::test_z"
+    assert ft.file == "tests/test_z.py"
+    assert ft.line == 9
+    assert ft.category is FailureCategory.AssertionFailure
+    # 兜底分支应抽到非空 diff,且为 `assert 7 == 42`
+    assert ft.assertion_diff is not None
+    assert "assert" in ft.assertion_diff
+    assert ft.assertion_diff == "assert 7 == 42"
