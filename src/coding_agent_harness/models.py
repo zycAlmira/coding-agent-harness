@@ -113,5 +113,27 @@ class ToolResult:
     error: str | None = None
 
 
-# 备注:Feedback/FailedTest/Fix/Step/RunResult 留到 Task 4/9/15 定义,
+# 备注:Fix/Step/RunResult 留到 Task 9/15 定义,
 # 避免本 task 引入未使用的前向依赖类型。
+
+
+# --- 反馈校验器产物(Task 5)---
+# FailedTest / Feedback:解析 pytest 输出得到结构化反馈,供反馈闭环回灌给 agent。
+# category 用字符串注解作前向引用,避免在 models 层循环 import taxonomy;
+# validator.py 真正 import FailureCategory 并赋值。
+@dataclass
+class FailedTest:
+    nodeid: str
+    category: "FailureCategory"  # 前向引用,避免循环 import
+    file: str
+    line: int
+    traceback_excerpt: str
+    assertion_diff: str | None = None
+
+
+@dataclass
+class Feedback:
+    status: str  # "PASS" | "FAIL"
+    failed_tests: list[FailedTest]
+    passed_count: int
+    summary: str

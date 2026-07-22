@@ -1,0 +1,12 @@
+collected 1 item
+
+tests/test_x.py E                                                        [1000%]
+
+==================================== ERRORS ====================================
+_____________________________ ERROR at setup of test_x __________________________
+>   from missing_module import something
+E       ModuleNotFoundError: No module named 'missing_module'
+
+tests/test_x.py:1: CollectionError
+ERROR tests/test_x.py::test_x
+= 1 error in 0.04s =
