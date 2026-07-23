@@ -1,0 +1,17 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.uv-cache
+.pip-cache
+.pytest_cache
+.env
+.env.*
+*.log
+.superpowers
+docs/
+*.pptx
+*.pdf
+Makefile
+tests/
