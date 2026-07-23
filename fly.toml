@@ -1,5 +1,6 @@
 # Fly.io 部署配置(通用 §4.11 学生免费额度)
 # 前提:已 `flyctl auth login`;首次需 `flyctl apps create coding-agent-harness-ai4se`
+# 注意:app 名全局唯一,若被占用请改名并同步 deploy.sh 与本文件的 app 字段。
 app = "coding-agent-harness-ai4se"
 primary_region = "nrt"  # 东京区域,近国内
 

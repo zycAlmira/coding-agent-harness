@@ -48,3 +48,17 @@ def test_dockerignore_excludes_venv_and_secrets():
     txt = di.read_text()
     for needle in [".venv", "__pycache__", ".env", ".git"]:
         assert needle in txt, f".dockerignore 应排除 {needle}"
+
+
+def test_has_healthcheck():
+    # HEALTHCHECK 探本地 8000(与 fly.toml checks 对齐)
+    txt = "\n".join(_lines())
+    assert "HEALTHCHECK" in txt, "应有 HEALTHCHECK"
+    assert "127.0.0.1:8000" in txt, "HEALTHCHECK 应探本地 8000"
+
+
+def test_no_dev_extras():
+    # 生产镜像不含 pytest/ruff(--no-dev)
+    txt = "\n".join(_lines())
+    assert "--no-dev" in txt, "生产镜像应 --no-dev(不含 dev extras)"
+
