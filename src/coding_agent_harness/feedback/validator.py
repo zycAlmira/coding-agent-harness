@@ -20,8 +20,14 @@ _FAILED_LINE = re.compile(r"^(?:FAILED|ERROR) (?P<nodeid>\S+)(?: - (?P<diff>.*))
 # _____________________________ ERROR at setup of test_x ________________________
 # 取中段最后一个 token 作为测试名(test_add / test_x)
 _FAIL_HEADER = re.compile(r"^_+ (?P<middle>.+?) _+$")
-# tests/test_calc.py:5: AssertionError
+# tests/test_calc.py:5: AssertionError   (--tb=line / 手工 fixture 的位置行,带 err 词)
 _TB_LOC = re.compile(r"^(?P<file>[^\s]+):(?P<line>\d+): (?P<err>\w+Error)$")
+# tests/test_calc.py:5: in test_add   (真实 `pytest --tb=short` 的位置行,无 err 词)
+# 该格式位置行出现在 assert 行之前(与 _TB_LOC 顺序相反),需延迟 flush(见 parse)。
+_TB_LOC_SHORT = re.compile(r"^(?P<file>[^\s]+):(?P<line>\d+): in \S+$")
+# ================ FAILURES ================ / ============ short test summary info ============
+# 分节分隔行,标志一个失败块结束。
+_SECTION_SEP = re.compile(r"^=+ .+ =+$")
 # E       assert 4 == 5 —— assertion_diff 的兜底来源
 _ASSERT_LINE = re.compile(r"E\s+assert\s+(?P<diff>.+)")
 # 1 failed, 1 passed in 0.05s / = 1 error in 0.04s =
@@ -67,40 +73,46 @@ class Validator:
             if m:
                 fail_index[m.group("nodeid")] = m.group("diff")
 
-        # 扫 traceback 块(header _ name _)拿 file:line + err
+        # 扫 traceback 块(header _ name _)拿 file:line + err。
+        # 兼容两种位置行顺序:
+        #   ① 手工 fixture / --tb=line:位置行 `file:line: ErrorType` 在 assert 行之后;
+        #   ② 真实 `pytest --tb=short`:位置行 `file:line: in test_name` 在 assert 行之前。
+        # 故不再于见到位置行时立即 append,而是先收集整个失败块的 excerpt,
+        # 在块结束(下一个 header / 分节分隔行 / 末尾)时统一 flush。
         cur_nodeid: str | None = None
+        pending: tuple[str, str, str] | None = None   # (file, line, err)
         excerpt: list[str] = []
         for ln in lines:
             mh = _FAIL_HEADER.match(ln)
             if mh:
+                # 进入新失败块前,flush 上一块(若有)。
+                _flush_failed(failed, cur_nodeid, pending, excerpt, fail_index, max_excerpt_lines)
+                pending = None
                 # header 中段取最后一个 token 作为测试名(test_add / test_x);
-                # nodeid 已在 FAIL_HEADER 捕获不到全路径,改从 fail_index 中按名匹配
+                # nodeid 在 FAIL_HEADER 捕获不到全路径,改从 fail_index 中按名匹配
                 name = mh.group("middle").split()[-1]
                 cur_nodeid = _match_nodeid_by_name(fail_index, name)
                 excerpt = []
                 continue
-            if cur_nodeid:
-                mt = _TB_LOC.match(ln)
-                if mt:
-                    diff = fail_index.get(cur_nodeid)
-                    # 兜底:FAILED 行无 diff 时,从 traceback 内 `E  assert` 行抽
-                    if diff is None:
-                        for e in excerpt:
-                            am = _ASSERT_LINE.search(e)
-                            if am:
-                                diff = "assert " + am.group("diff")
-                                break
-                    failed.append(FailedTest(
-                        nodeid=cur_nodeid,
-                        category=_classify(mt.group("err"), diff),
-                        file=mt.group("file"),
-                        line=int(mt.group("line")),
-                        traceback_excerpt="\n".join(excerpt[-max_excerpt_lines:]),
-                        assertion_diff=diff,
-                    ))
-                    cur_nodeid = None
-                else:
-                    excerpt.append(ln)
+            if cur_nodeid is None:
+                continue
+            mt = _TB_LOC.match(ln)
+            if mt:
+                pending = (mt.group("file"), mt.group("line"), mt.group("err"))
+                continue
+            ms = _TB_LOC_SHORT.match(ln)
+            if ms:
+                # 真实 --tb=short 位置行无 err 词,留空串,分类交由 diff 兜底
+                # (excerpt 内 `E  assert` 行 → AssertionFailure)。
+                pending = (ms.group("file"), ms.group("line"), "")
+                continue
+            if _SECTION_SEP.match(ln):
+                _flush_failed(failed, cur_nodeid, pending, excerpt, fail_index, max_excerpt_lines)
+                pending = None
+                cur_nodeid = None
+                continue
+            excerpt.append(ln)
+        _flush_failed(failed, cur_nodeid, pending, excerpt, fail_index, max_excerpt_lines)
 
         status = "PASS" if run.exit_code == 0 and not failed else "FAIL"
         passed = 0
@@ -117,3 +129,31 @@ def _match_nodeid_by_name(index: dict[str, str | None], name: str) -> str | None
         if nid.split("::")[-1] == name:
             return nid
     return next(iter(index), None)
+
+
+def _flush_failed(failed, nodeid, pending, excerpt, fail_index, max_excerpt_lines):
+    """把一个已收集完的失败块落成 FailedTest。
+
+    纯函数式:只读入参,向 failed 列表 append。在失败块结束(下一个 header /
+    分节行 / 输入末尾)时由 parse 调用。延迟 flush 使其兼容 `--tb=short`
+    (位置行在 assert 行前)与手工 fixture(位置行在 assert 行后)两种顺序。
+    """
+    if nodeid is None or pending is None:
+        return
+    file, line, err = pending
+    diff = fail_index.get(nodeid)
+    # 兜底:FAILED 行无 diff 时,从 traceback 内 `E  assert` 行抽
+    if diff is None:
+        for e in excerpt:
+            am = _ASSERT_LINE.search(e)
+            if am:
+                diff = "assert " + am.group("diff")
+                break
+    failed.append(FailedTest(
+        nodeid=nodeid,
+        category=_classify(err, diff),
+        file=file,
+        line=int(line),
+        traceback_excerpt="\n".join(excerpt[-max_excerpt_lines:]),
+        assertion_diff=diff,
+    ))
