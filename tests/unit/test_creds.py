@@ -1,4 +1,3 @@
-import keyring
 from coding_agent_harness.creds.keychain import Creds
 
 

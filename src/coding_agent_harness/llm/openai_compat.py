@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import httpx
-from coding_agent_harness.llm.base import LLMClient, Message, ToolSchema
 from coding_agent_harness.models import (
     AssistantTurn, Action, WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Stop,
 )

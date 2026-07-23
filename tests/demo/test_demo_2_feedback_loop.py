@@ -4,7 +4,9 @@ from coding_agent_harness.llm.mock import MockLLMClient
 from coding_agent_harness.memory.store import Memory
 from coding_agent_harness.config import load_config
 from coding_agent_harness.models import WriteFile, RunTests, Stop
-import yaml, tempfile, shutil
+import yaml
+import tempfile
+import shutil
 from pathlib import Path
 
 FIX = Path(__file__).parent.parent.parent / "fixtures" / "sample_pkg"
@@ -16,7 +18,8 @@ def _cfg(root):
         "guardrails": {"max_rounds": 8, "same_category_prompt_at": 2,
                         "same_category_stop_at": 3, "no_change_stop_at": 2},
         "feedback": {"pytest_args": ["--tb=short", "-q"], "max_traceback_excerpt_lines": 8}},
-        f); f.close()
+        f)
+    f.close()
     return load_config(f.name)
 
 

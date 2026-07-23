@@ -1,5 +1,5 @@
 from coding_agent_harness.llm.mock import MockLLMClient
-from coding_agent_harness.models import WriteFile, RunTests, Stop, AssistantTurn
+from coding_agent_harness.models import WriteFile, Stop
 from coding_agent_harness.feedback.taxonomy import FailureCategory
 
 

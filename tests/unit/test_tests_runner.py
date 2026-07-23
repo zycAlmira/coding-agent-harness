@@ -7,7 +7,8 @@ FIX = Path(__file__).parent.parent.parent / "fixtures" / "sample_pkg"
 
 
 def _cfg(root: Path):
-    import yaml, tempfile
+    import yaml
+    import tempfile
     f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
     yaml.safe_dump({"project_root": str(root), "llm": {"base_url": "x", "model": "m"}}, f)
     f.close()

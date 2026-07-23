@@ -4,7 +4,8 @@ from coding_agent_harness.models import (
     Allow, Deny, NeedsApproval,
 )
 from coding_agent_harness.guardrails.guardrail import guardrail
-import yaml, tempfile
+import yaml
+import tempfile
 
 
 def _cfg(blacklist=None, whitelist=None, root="."):
@@ -17,7 +18,8 @@ def _cfg(blacklist=None, whitelist=None, root="."):
         },
     }
     f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
-    yaml.safe_dump(raw, f); f.close()
+    yaml.safe_dump(raw, f)
+    f.close()
     return load_config(f.name)
 
 

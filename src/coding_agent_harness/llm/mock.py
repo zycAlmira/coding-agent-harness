@@ -1,7 +1,6 @@
 """脚本化 mock LLM。据当前 LoopState 选分支,确定性,不触网。"""
 from __future__ import annotations
-from coding_agent_harness.llm.base import LLMClient, Message, ToolSchema
-from coding_agent_harness.models import AssistantTurn, Action
+from coding_agent_harness.models import AssistantTurn
 
 
 class MockLLMClient:

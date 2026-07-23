@@ -2,7 +2,8 @@ from coding_agent_harness.core.state import LoopState, update_after_feedback, de
 from coding_agent_harness.models import Feedback, FailedTest
 from coding_agent_harness.feedback.taxonomy import FailureCategory
 from coding_agent_harness.config import load_config
-import yaml, tempfile
+import yaml
+import tempfile
 
 
 def _cfg(**overrides):
@@ -11,7 +12,8 @@ def _cfg(**overrides):
                            "same_category_stop_at": 3, "no_change_stop_at": 2}}
     raw["guardrails"].update(overrides)
     f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
-    yaml.safe_dump(raw, f); f.close()
+    yaml.safe_dump(raw, f)
+    f.close()
     return load_config(f.name)
 
 

@@ -1,8 +1,8 @@
 from coding_agent_harness.config import load_config
 from coding_agent_harness.models import ReadFile, WriteFile, Stop
 from coding_agent_harness.tools.dispatch import dispatch
-import yaml, tempfile, sys
-from pathlib import Path
+import yaml
+import tempfile
 
 
 def _cfg(root):

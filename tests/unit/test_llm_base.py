@@ -1,4 +1,4 @@
-from coding_agent_harness.llm.base import LLMClient, Message
+from coding_agent_harness.llm.base import Message
 from coding_agent_harness.models import AssistantTurn, Stop
 
 

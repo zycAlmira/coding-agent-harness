@@ -2,10 +2,10 @@
 组织上下文 → 调 LLM → 解析动作 → 护栏 → (审批)→ 分发 → 校验 → 回灌 → 停机。"""
 from __future__ import annotations
 import threading
-from typing import Callable, Any
+from typing import Callable
 from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
-    AssistantTurn, Action, RunTests, Stop, ToolResult, Feedback, Step, RunResult, Fix,
+    RunTests, Stop, ToolResult, Step, RunResult, Fix,
 )
 from coding_agent_harness.llm.base import LLMClient, Message
 from coding_agent_harness.tools.dispatch import dispatch

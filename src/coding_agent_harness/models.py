@@ -2,7 +2,11 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Union
+from typing import Any, TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    # 前向引用:避免在 models 层循环 import taxonomy;validator.py 真正 import 并赋值。
+    from coding_agent_harness.feedback.taxonomy import FailureCategory
 
 
 # --- 运行结果枚举 ---
@@ -124,7 +128,7 @@ class ToolResult:
 @dataclass
 class FailedTest:
     nodeid: str
-    category: "FailureCategory"  # 前向引用,避免循环 import
+    category: FailureCategory  # 前向引用(TYPE_CHECKING),避免循环 import
     file: str
     line: int
     traceback_excerpt: str
@@ -154,7 +158,6 @@ class Fix:
 # Step:一轮完整记录(动作→护栏判定→工具结果→反馈),供回放与日志。
 # RunResult:一次 agent 运行的终局产物。timestamp/ts 由调用方传入,
 # 不在循环内取系统时间,保证 mock LLM 下可确定性单测。
-from typing import Any
 
 
 @dataclass

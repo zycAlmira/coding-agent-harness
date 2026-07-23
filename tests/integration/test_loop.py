@@ -3,7 +3,8 @@ from coding_agent_harness.llm.mock import MockLLMClient
 from coding_agent_harness.memory.store import Memory
 from coding_agent_harness.config import load_config
 from coding_agent_harness.models import WriteFile, RunTests, Stop
-import yaml, tempfile
+import yaml
+import tempfile
 from pathlib import Path
 
 FIX = Path(__file__).parent.parent.parent / "fixtures" / "sample_pkg"
@@ -19,7 +20,8 @@ def _cfg(root):
         "feedback": {"pytest_args": ["--tb=short", "-q"], "max_traceback_excerpt_lines": 8},
         "memory": {"fixes_path": str(root / "fixes.json"),
                    "conventions_path": str(root / "conv.json"), "retrieve_top_k": 3},
-    }, f); f.close()
+    }, f)
+    f.close()
     return load_config(f.name)
 
 
