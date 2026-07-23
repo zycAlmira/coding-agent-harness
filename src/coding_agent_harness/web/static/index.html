@@ -1,1 +1,140 @@
-<!doctype html><html><body>placeholder</body></html>
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Coding Agent Harness</title>
+  <!-- Open Design 设计系统 token(以 CSS 变量注入;正式集成时替换为 Open Design 组件包) -->
+  <style>
+    :root {
+      --od-bg: #0f1115; --od-surface: #181b22; --od-text: #e6e6e6;
+      --od-accent: #4d8cff; --od-danger: #ff5d5d; --od-success: #3ecf8e;
+      --od-warn: #f5a623; --od-space: 12px; --od-radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--od-bg); color:var(--od-text); font-family:system-ui,-apple-system,sans-serif; }
+    header { padding:var(--od-space); background:var(--od-surface); display:flex; gap:var(--od-space); align-items:center; }
+    input[type=text] { flex:1; padding:8px 10px; border-radius:var(--od-radius); border:1px solid #333; background:#111; color:var(--od-text); font-size:14px; }
+    button { padding:8px 12px; border:0; border-radius:var(--od-radius); background:var(--od-accent); color:#fff; cursor:pointer; font-size:14px; }
+    button:hover { filter: brightness(1.1); }
+    button.deny { background:var(--od-danger); }
+    button.ghost { background:#2a2f3a; }
+    main { display:grid; grid-template-columns:2fr 1fr; gap:var(--od-space); padding:var(--od-space); }
+    #timeline { background:var(--od-surface); border-radius:var(--od-radius); padding:var(--od-space); overflow:auto; height:80vh; }
+    #status { background:var(--od-surface); border-radius:var(--od-radius); padding:var(--od-space); height:80vh; overflow:auto; }
+    .step { border-left:3px solid var(--od-accent); margin:8px 0; padding:6px 10px; }
+    .step.deny { border-color:var(--od-danger); }
+    .step.pass { border-color:var(--od-success); }
+    .step.approval { border-color:var(--od-warn); }
+    .intent { color:#9bb; font-style:italic; margin-top:2px; }
+    .meta { color:#777; font-size:12px; }
+    .approve-btns button { margin-right:6px; }
+    .cred-modal { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; }
+    .cred-modal.show { display:flex; }
+    .cred-modal form { background:var(--od-surface); padding:20px; border-radius:8px; display:grid; gap:8px; width:360px; }
+    .cred-modal input { padding:8px; border-radius:6px; border:1px solid #333; background:#111; color:var(--od-text); }
+  </style>
+</head>
+<body>
+  <header>
+    <input id="task" type="text" placeholder="描述任务,如:修 add 的 bug" />
+    <button onclick="start()">开始</button>
+    <button class="ghost" onclick="openCreds()">凭据</button>
+  </header>
+  <main>
+    <div id="timeline"></div>
+    <div id="status">
+      <h3 style="margin-top:0">状态</h3>
+      <pre id="state">(未开始)</pre>
+    </div>
+  </main>
+
+  <div class="cred-modal" id="credModal">
+    <form onsubmit="saveCreds(event)">
+      <h3 style="margin:0">凭据管理</h3>
+      <label>API Key<input id="ck_api" type="password" /></label>
+      <label>Base URL<input id="ck_url" type="text" placeholder="https://api.openai.com/v1" /></label>
+      <label>Model<input id="ck_model" type="text" placeholder="gpt-4o-mini" /></label>
+      <div id="credStatus" class="meta"></div>
+      <div style="display:flex; gap:8px">
+        <button type="submit">保存(存 Keychain)</button>
+        <button type="button" class="ghost" onclick="closeCreds()">关闭</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    let es;
+    let currentTaskId = null;
+
+    function start() {
+      const task = document.getElementById('task').value || '(空任务)';
+      fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({task})})
+        .then(r => r.json()).then(d => {
+          currentTaskId = d.task_id;
+          document.getElementById('timeline').innerHTML = '';
+          setState('运行中… task=' + d.task_id);
+          es = new EventSource(`/api/tasks/${d.task_id}/events`);
+          es.onmessage = ev => render(JSON.parse(ev.data));
+          es.onerror = () => setState('SSE 连接断开');
+        });
+    }
+
+    function render(e) {
+      const tl = document.getElementById('timeline');
+      if (e.type === 'loop_stopped') {
+        tl.innerHTML += '<div class="step pass"><div>loop 结束</div></div>';
+        setState('已结束');
+        es.close();
+        return;
+      }
+      if (e.type === 'error') {
+        tl.innerHTML += `<div class="step deny"><div>错误:${e.msg||''}</div></div>`;
+        return;
+      }
+      if (e.type === 'pending_approval') {
+        const btns = `<div class="approve-btns">
+          <button onclick="approve('${e.approval_id}', true)">通过</button>
+          <button class="deny" onclick="approve('${e.approval_id}', false)">拒绝</button></div>`;
+        tl.innerHTML += `<div class="step approval"><div>需审批:${e.reason||''}</div>
+          <div class="intent">intent: ${e.intent||''}</div>${btns}</div>`;
+        tl.scrollTop = tl.scrollHeight;
+        return;
+      }
+      const cls = e.verdict === 'Deny' ? 'deny'
+        : (e.feedback && e.feedback.status==='PASS' ? 'pass' : '');
+      const intent = e.intent ? `<div class="intent">intent: ${e.intent}</div>` : '';
+      const fb = e.feedback ? `<div>feedback: ${e.feedback.status} (fail=${e.feedback.failed} pass=${e.feedback.passed})</div>` : '';
+      tl.innerHTML += `<div class="step ${cls}"><div>${e.type}${e.verdict?' · '+e.verdict:''}</div>${intent}${fb}</div>`;
+      tl.scrollTop = tl.scrollHeight;
+    }
+
+    function approve(aid, decision) {
+      fetch(`/api/tasks/${currentTaskId}/approvals/${aid}`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({decision})
+      }).then(r => r.json()).then(() => setState('审批已提交:' + (decision?'通过':'拒绝')));
+    }
+
+    function openCreds() {
+      document.getElementById('credModal').classList.add('show');
+      fetch('/api/credentials/status').then(r=>r.json()).then(d => {
+        document.getElementById('credStatus').textContent = d.set ? '已配置 keychain' : '未配置';
+      });
+    }
+    function closeCreds() { document.getElementById('credModal').classList.remove('show'); }
+    function saveCreds(ev) {
+      ev.preventDefault();
+      fetch('/api/credentials/set', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          api_key: document.getElementById('ck_api').value,
+          base_url: document.getElementById('ck_url').value,
+          model: document.getElementById('ck_model').value,
+        })
+      }).then(r=>r.json()).then(() => { document.getElementById('credStatus').textContent = '已保存'; });
+    }
+
+    function setState(s) { document.getElementById('state').textContent = s; }
+  </script>
+</body>
+</html>

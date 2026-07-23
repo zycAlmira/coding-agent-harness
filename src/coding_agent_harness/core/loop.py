@@ -73,13 +73,14 @@ class AgentLoop:
             msgs.append(Message("system", c))
         return msgs
 
-    def _suspend_for_approval(self, action, verdict) -> tuple[str, bool]:
+    def _suspend_for_approval(self, action, verdict, intent: str = "") -> tuple[str, bool]:
         """登记一条 pending 审批并挂起循环,阻塞到 approve() 唤醒。
 
-        返回 (approval_id, decision)。挂起用 threading.Event,不取系统时间做判定,
-        不依赖 LLM——人类决定经 approve() 注入后才恢复,机制本身在给定 decision 下
-        确定(§A.4 可单测)。唤醒后在同一把锁内原子取回 decision 并清空 pending,
-        避免 run 线程与潜在的双击 approve 在锁外竞态(last-write-wins)。
+        返回 (approval_id, decision)。挂起前先发 pending_approval 事件(含
+        approval_id/reason/intent),供 WebUI 渲染审批按钮(§A.6 ① 弹审批→人类决定链路)。
+        挂起用 threading.Event,不取系统时间做判定,不依赖 LLM——人类决定经 approve()
+        注入后才恢复,机制本身在给定 decision 下确定(§A.4 可单测)。唤醒后在同一把锁内
+        原子取回 decision 并清空 pending,避免 run 线程与潜在的双击 approve 在锁外竞态。
 
         注意:hitl_enabled=True 时 run() 会阻塞在此,必须在独立线程调用 run()
         (否则主线程永久挂起);由 WebUI/CLI 的驱动方负责线程化。
@@ -92,6 +93,10 @@ class AgentLoop:
             }
             self._new_approval.set()
             self._decision_ready.clear()
+        # 挂起前发事件:把 approval_id + reason + intent 推给前端,人类据此决定。
+        reason = getattr(verdict, "reason", "")
+        self.on_event({"type": "pending_approval", "approval_id": aid,
+                        "reason": reason, "intent": intent})
         # 阻塞:等待人类 approve。无超时——挂起即等待人类决策。
         self._decision_ready.wait()
         with self._lock:
@@ -143,7 +148,7 @@ class AgentLoop:
             elif vname == "NeedsApproval":
                 if self.hitl_enabled:
                     # HITL 完整化:挂起循环等人类审批,据决定执行或回灌"被拒"
-                    aid, decision = self._suspend_for_approval(turn.action, v)
+                    aid, decision = self._suspend_for_approval(turn.action, v, turn.intent)
                     if decision:
                         tr = self.dispatch(turn.action, self.config)
                         fb = None

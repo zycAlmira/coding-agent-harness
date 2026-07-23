@@ -81,3 +81,28 @@ def test_approve_unknown_id_raises():
         assert False, "应抛 KeyError"
     except KeyError:
         pass
+
+
+def test_hitl_emits_pending_approval_event(tmp_path):
+    """HITL 挂起前应发 pending_approval 事件(含 approval_id/reason/intent),供 WebUI 渲染按钮。"""
+    shutil.copytree(FIX, tmp_path / "ws", dirs_exist_ok=True)
+    ws = tmp_path / "ws"
+    events = []
+    mock = MockLLMClient([
+        {"when": "round 1", "action": DeleteFile("calc.py"), "intent": "删 calc.py"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem, hitl_enabled=True, on_event=events.append)
+    t, box = _run_in_thread(loop, "删 calc.py")
+    aid = loop.wait_for_pending_approval(timeout=5)
+    assert aid is not None
+    loop.approve(aid, True)
+    t.join(timeout=5)
+    assert not t.is_alive()
+    pending = [e for e in events if e.get("type") == "pending_approval"]
+    assert pending, "应发 pending_approval 事件"
+    assert pending[0]["approval_id"] == aid
+    assert pending[0]["intent"] == "删 calc.py"
+    assert pending[0]["reason"]  # 携带护栏理由
