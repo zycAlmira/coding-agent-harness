@@ -16,11 +16,11 @@ def _lines() -> list[str]:
 
 
 def test_from_python_base():
-    assert any(l.startswith("FROM") and "python" in l for l in _lines()), "应 FROM python 基镜像"
+    assert any(line.startswith("FROM") and "python" in line for line in _lines()), "应 FROM python 基镜像"
 
 
 def test_exposes_8000():
-    assert any(l.startswith("EXPOSE 8000") for l in _lines()), "应 EXPOSE 8000(serve 默认端口)"
+    assert any(line.startswith("EXPOSE 8000") for line in _lines()), "应 EXPOSE 8000(serve 默认端口)"
 
 
 def test_cmd_runs_harness_serve():
