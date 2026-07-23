@@ -27,3 +27,7 @@ packages = ["src/coding_agent_harness"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+  "ignore::starlette.exceptions.StarletteDeprecationWarning",
+  "ignore::pytest.PytestUnraisableExceptionWarning",
+]
