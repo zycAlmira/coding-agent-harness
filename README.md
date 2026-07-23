@@ -140,7 +140,7 @@ uv run pytest tests/demo/ -v
 
 - **本地 docker daemon**:Mac 需启动 Docker Desktop GUI 才能本地 `docker build`;未启动时镜像构建由 CI `build-image` job(GitLab runner docker:dind)完成。
 - **§五.9 线上 URL**:需用户在 Fly.io 注册账号 + `flyctl auth login` 后执行 `scripts/deploy.sh` 产生公网 URL,AI 无法代持云账号 token。
-- **容器内 keychain**:Linux 容器内 macOS Keychain 不可用,`keyring` 回落文件后端;真实 LLM 跑建议本地或显式配文件后端。
+- **容器内 keychain**:Linux 容器内 macOS Keychain 不可用,`keyring` 无可用后端时不会自动文件回落;真实 LLM 跑建议本地运行,或在容器内显式配 `keyring` 文件后端(`keyrings.alt`)/环境注入。
 - **Windows shlex**:`tools/shell.py` 的 `shell=False` 在 Windows 上对复杂命令解析较弱(Task 7 登记 follow-up;mock 单测不暴露,CI 未跑 Windows 矩阵)。
 - **冷启动样本**:SPEC_PROCESS 冷启动验证仅覆盖 Task 1/2(单人项目,信号量偏低,见 SPEC_PROCESS §5.5)。
 

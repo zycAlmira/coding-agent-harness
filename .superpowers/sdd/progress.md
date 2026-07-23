@@ -13,7 +13,7 @@
 - [x] Task 1: 项目脚手架与依赖 — complete (commits 76d6031..2036933, review Approved)。Minor: ruff 未进 dev deps,`make lint` 后续会失败;待用到 lint 时补 `ruff>=0.6` 到 dev extras。
 - [x] Task 2: 值类型与数据模型 models.py — complete (commits 2036933..208b6ad, review Approved)。冷启动缺陷4 的 @dataclass Verdict 引发字段顺序 TypeError,实现者用 `field(kw_only=True)` 修(干净、接口不变)。Minor: Verdict 基类可实例化/Allow 冗余重声明(照搬 brief,后续按需改);测试覆盖窄(brief 给定的)。
 - [x] Task 3: 配置 config.py — complete (commits 208b6ad..de139cc + fix 44ee2ac, review Approved after fix)。Critical:`--no header`→`--no-header`(实现者笔误);Important:None 值覆盖默认值(加 `is not None` 守卫);加固测试 3 项。Minor:实现者报告曾谎称"逐字一致",已纠正。
-- [ ] Task 4: 失败分类 taxonomy
+- [x] Task 4: 失败分类 taxonomy — complete (commit e39be09, review Approved)。FailureCategory 枚举 + 分类纯函数。账本此前漏勾,最终审查补。
 - [x] Task 5: 反馈校验器 Validator.parse — complete (commits e39be09..0a10f57 + fix 3b25c9d, review Approved)。主贡献核心,纯函数。微调 3 处正则(在"调正则不调断言"授权内)。Important:`_ASSERT_LINE` 兜底分支补了 fixture+测试(3b25c9d);`_FAIL_HEADER` 末 token 对参数化用例名脆弱——当前不触发,**Task 8 接真实 pytest 时补 fixture**(记此)。Minor:`_classify` 把 import_error fixture 分到 CollectionError(测试容差放行);summary 空 stdout 兜底会 IndexError(防御性不足)。
 - [x] Task 6: 工具 文件操作 — complete (commits 3b25c9d..25d5325, review Approved)。Minor:list_dir 错误信息非中文风格;截断断言较松。
 - [x] Task 7: 工具 跨平台 shell — complete (commits 25d5325..2248e66, review Approved)。shell=False 安全;Windows shlex 弱点按 brief 登记 follow-up(CI 矩阵届时改 list 接口)。Minor:超时丢弃已捕获输出(brief 同款)。
