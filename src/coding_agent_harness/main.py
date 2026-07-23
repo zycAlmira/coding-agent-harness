@@ -12,13 +12,20 @@ from coding_agent_harness.creds.keychain import Creds
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv:
-        print("用法: harness serve [--real] | creds {status|set|clear} | run <task>", file=sys.stderr)
+        print("用法: harness serve [--real] [--project-root <path>] | creds {status|set|clear} | run <task>", file=sys.stderr)
         return 2
     cmd = argv[0]
     if cmd == "serve":
         import uvicorn
         from coding_agent_harness.web.app import create_app
-        app = create_app(use_mock="--real" not in argv)
+        use_mock = "--real" not in argv
+        # --project-root <path>:指定 agent 工作目录,默认 ./workspace
+        root = "./workspace"
+        if "--project-root" in argv:
+            idx = argv.index("--project-root")
+            if idx + 1 < len(argv):
+                root = argv[idx + 1]
+        app = create_app(use_mock=use_mock, project_root=root)
         uvicorn.run(app, host="0.0.0.0", port=8000)
         return 0
     if cmd == "creds":
