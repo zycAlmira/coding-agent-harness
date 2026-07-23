@@ -19,6 +19,13 @@ def test_has_required_sections():
         assert h in txt, f"README 缺章节:{h}"
 
 
+def test_has_extra_sections():
+    # §4.11 部署架构、§A.6 机制演示、§3.2 凭据、已知限制也受守护
+    txt = _txt()
+    for h in ["## 部署架构", "## 机制演示", "## 凭据与安全配置", "## 已知限制"]:
+        assert h in txt, f"README 缺章节:{h}"
+
+
 def test_has_credential_section():
     # §3.2:key 安全配置方式
     assert "凭据" in _txt()
