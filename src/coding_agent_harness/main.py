@@ -47,7 +47,12 @@ def main(argv: list[str] | None = None) -> int:
         from coding_agent_harness.llm.openai_compat import OpenAICompatibleClient
         from coding_agent_harness.memory.store import Memory
         task = " ".join(argv[1:])
-        cfg = load_config("config.yaml")
+        try:
+            cfg = load_config("config.yaml")
+        except (FileNotFoundError, OSError) as e:
+            print(f"无法读取 config.yaml: {e}", file=sys.stderr)
+            print("提示:先 `harness creds set` 录入凭据,并准备 config.yaml。", file=sys.stderr)
+            return 2
         mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
         loop = AgentLoop(llm=OpenAICompatibleClient(Creds()), config=cfg, memory=mem)
         result = loop.run(task, ts_provider=lambda: "2026-07-22T00:00:00")

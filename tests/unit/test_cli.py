@@ -61,3 +61,12 @@ def test_no_args_prints_usage(capsys):
     rc = main([])
     assert rc != 0
     assert "用法" in capsys.readouterr().err
+
+
+def test_run_missing_config(monkeypatch, capsys, tmp_path):
+    # run 子命令缺 config.yaml 时应友好报错 + rc=2,不抛 traceback
+    monkeypatch.chdir(tmp_path)
+    rc = main(["run", "do something"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "config.yaml" in err
