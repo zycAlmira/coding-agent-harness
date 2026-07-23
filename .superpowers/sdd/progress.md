@@ -48,3 +48,11 @@
 - §4.6 worktree:EnterWorktree 工具因会话缓存状态拒绝,回退特性分支(见 AGENT_LOG)。
 - §4.5 类型不同:仅 Claude 系列可用,用 general-purpose(类型不同但模型同源),部分满足。
 - 冷启动样本仅 Task 1/2(信号量偏低,见 SPEC_PROCESS §5.5)。
+
+## 最终全分支审查与收尾(2026-07-23)
+
+- 最终全分支审查(superpowers:requesting-code-review 全局验收,f07f8cd..HEAD,46 commits,86 files,+4517/-33):交付物 §五.1-9 逐条核验——§五.1(SPEC/PLAN/SPEC_PROCESS 软链+文件)、§五.2(自实现内核+mock 确定性单测)、§五.3(Dockerfile)、§五.4(README 必含六章节)、§五.5(AGENT_LOG Task1-24)、§五.6(.gitlab-ci.yml unit-test job)全 PASS;§五.7(CI 真实 pass 待 push,unit-test job 结构对齐本地 98 passed)、§五.9(URL 待用户部署,部署路径完整)为环境限制诚实记录;§五.8 REFLECTION(Major,见下)。§A.4 红线六条全 PASS(内核自实现/无框架寄生/机制为代码/mock 驱动确定性可测/六维度齐全反馈闭环做深/内核自己运转)。§3.1 凭据安全 PASS(无真实 key 入 git/history,keychain 不回显明文)。98 passed,make lint All checks passed。
+- **1 Major(合入前必修)**:§五.8 REFLECTION.md 须本人撰写。AI 已起草约 2100 字并标注"AI 起草需本人改写",但"本人逐节改写+删除标注"只能用户做——AI 无法代劳(与 §五.9 URL、§五.7 CI 真实 pass 同性质的环境/责任限制)。
+- **2 Minor(已修)**:progress Task 4 账本漏勾→补 [x];README keychain"回落文件后端"措辞→改"无可用后端时不自动回落,建议本地/显式配文件后端"。
+- 用户决策:**暂不合 main,保持 feature/coding-agent-harness 分支**。无 remote(git remote 空),无法 push/建 PR。
+- 本人后续待办:① 改写 REFLECTION.md 逐节补个人视角与批判性判断,删除首行 AI 起草标注(§五.8);② 配 NJU Git remote 并 push 触发 CI(§五.6/§五.7);③ `scripts/deploy.sh` 部署 Fly.io 后填 README 公网 URL(§五.9)。

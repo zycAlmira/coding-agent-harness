@@ -72,3 +72,12 @@
 5. **plan 内部矛盾逐条核**:实现者不能照搬 plan 测试,必须与已实现模块签名逐条核对(fake R 补方法、demo mock 起步值、runner try/finally、hitl_enabled 接线)。
 6. **诚实记录限制 > 掩盖**:本地 docker daemon 未运行、§五.9 URL 待用户部署、容器 keychain 文件后端、Windows shlex、冷启动样本——均如实记于 README/AGENT_LOG/REFLECTION,并以单测 + CI job 缓解。
 7. **审查两阶段有效**:spec 合规(红线)先于代码质量,拦住 hitl_enabled 接线遗漏、锁纪律违规、runner 无 finally 等会致死锁/无限阻塞的 Important。
+
+## 最终全分支审查与收尾(2026-07-23)
+
+- 技能:`superpowers:requesting-code-review`(全局验收,非逐 task)。范围 f07f8cd..HEAD(46 commits,86 files,+4517/-33)。
+- 交付物 §五.1-9 逐条核验:§五.1-6/8 PASS(SPEC/PLAN/SPEC_PROCESS 软链+文件、自实现内核+mock 确定性单测、Dockerfile、README 必含六章节、AGENT_LOG Task1-24、.gitlab-ci.yml unit-test job);§五.7 CI 真实 pass 待 push、§五.9 URL 待用户部署(环境限制诚实记录)。§A.4 红线六条全 PASS(自实现/无框架寄生 grep langchain|autogen|crewai|llama_index 无命中/机制为代码/mock 驱动确定性可测/六维度齐全反馈闭环做深/内核自己运转)。§3.1 凭据安全 PASS(grep sk-/api_key 无命中,.env 不在 git history,keychain 不回显)。98 passed,lint All checks passed。
+- **1 Major(合入前必修)**:§五.8 REFLECTION 须本人撰写。AI 已起草约 2100 字并标注"AI 起草需本人改写",但本人逐节改写+删除标注只能用户做——AI 无法代劳。
+- **2 Minor(已修)**:progress Task 4 账本漏勾→补 [x];README keychain"回落文件后端"措辞精确化。
+- 人工干预/用户决策:**暂不合 main,保持 feature/coding-agent-harness 分支**(无 remote,无法 push/建 PR)。本人后续:改写 REFLECTION(§五.8)、配 NJU Git remote push 触发 CI(§五.6/§五.7)、Fly.io 部署填 URL(§五.9)。
+- 教训:§五.8"本人撰写"、§五.9"可访问公网 URL"、§五.7"最后一次 CI pass"是 AI 协作的天然边界——AI 能准备好全部前置物(起草 REFLECTION、Dockerfile+fly.toml+deploy.sh、CI 配置),但"本人撰写""持云 token 部署""push 触发真实 CI"这三步必须人类完成。诚实标注这些边界比伪装完成更有价值。
