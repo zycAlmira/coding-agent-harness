@@ -6,7 +6,7 @@ import uuid
 import tempfile
 from pathlib import Path
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
@@ -72,8 +72,14 @@ def create_app(
         agent = AgentLoop(llm=llm, config=config, memory=mem, on_event=on_event)
 
         async def runner():
-            await asyncio.to_thread(agent.run, req.task, lambda: "2026-07-22T00:00:00")
-            await queue.put({"type": "loop_stopped"})
+            # try/finally 保证 loop_stopped 一定发出:即使 agent.run 抛异常,
+            # SSE 客户端也不会无限阻塞在 q.get()。异常时补一条 error 事件。
+            try:
+                await asyncio.to_thread(agent.run, req.task, lambda: "2026-07-22T00:00:00")
+            except Exception as e:  # noqa: BLE001 给前端一个可见错误,不吞
+                await queue.put({"type": "error", "msg": str(e)})
+            finally:
+                await queue.put({"type": "loop_stopped"})
 
         t = asyncio.create_task(runner())
         state[task_id] = {"loop": agent, "queue": queue, "events": events_log, "task": t}
@@ -81,8 +87,12 @@ def create_app(
 
     @app.get("/api/tasks/{task_id}/events")
     async def events(task_id: str):
+        entry = state.get(task_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="unknown task_id")
+
         async def stream():
-            q = state[task_id]["queue"]
+            q = entry["queue"]
             while True:
                 e = await q.get()
                 yield f"data: {json.dumps(e, ensure_ascii=False)}\n\n"
@@ -92,7 +102,10 @@ def create_app(
 
     @app.post("/api/tasks/{task_id}/approvals/{aid}")
     def approve(task_id: str, aid: str, req: ApproveReq):
-        agent = state[task_id]["loop"]
+        entry = state.get(task_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="unknown task_id")
+        agent = entry["loop"]
         agent.approve(aid, req.decision)
         return {"ok": True, "approved": req.decision}
 
@@ -114,9 +127,15 @@ def create_app(
 def _default_config(project_root) -> Config:
     """无 config.yaml 时用最小默认(project_root + llm 占位);其余取 dataclass 默认。"""
     f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
-    yaml.safe_dump({"project_root": str(project_root), "llm": {"base_url": "x", "model": "m"}}, f)
-    f.close()
-    return load_config(f.name)
+    try:
+        yaml.safe_dump({"project_root": str(project_root), "llm": {"base_url": "x", "model": "m"}}, f)
+        f.close()
+        return load_config(f.name)
+    finally:
+        try:
+            Path(f.name).unlink()
+        except OSError:
+            pass
 
 
 def _demo_script():
