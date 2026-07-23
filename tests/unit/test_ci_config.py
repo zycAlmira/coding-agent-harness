@@ -45,3 +45,24 @@ def test_build_image_job_present():
     assert "build-image" in data, "容器分发要求 CI 含 build-image job(§4.10)"
     joined = "\n".join(_script_lines(data["build-image"]))
     assert "docker build" in joined
+
+
+def test_unit_test_runs_on_push():
+    # §4.8:每次 push/MR 自动跑测试
+    data = _load()
+    rules = data["unit-test"].get("rules") or []
+    assert rules, "unit-test 须有 rules 以在 push/MR 触发"
+    conds = "\n".join(str(r) for r in rules)
+    assert "merge_request_event" in conds or "CI_COMMIT_BRANCH" in conds, (
+        "unit-test 的 rules 应覆盖 MR 与分支 push"
+    )
+
+
+def test_cache_key_locks_uv_lock():
+    # cache key 锁 uv.lock:改依赖时缓存自动失效
+    data = _load()
+    cache = data.get("cache") or {}
+    key = cache.get("key") or {}
+    files = key.get("files") if isinstance(key, dict) else None
+    assert files and "uv.lock" in files, "cache.key.files 应含 uv.lock"
+
