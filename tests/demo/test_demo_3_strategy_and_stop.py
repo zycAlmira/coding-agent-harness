@@ -33,8 +33,9 @@ class _CapturingClient:
 def test_repeated_failure_triggers_prompt_and_stop(tmp_path):
     shutil.copytree(FIX, tmp_path / "ws", dirs_exist_ok=True)
     ws = tmp_path / "ws"
-    # round1 错值 → round2 FAIL → round3 同一错值 → round4 RunTests FAIL(同 set →
-    # no_change_streak=2 → stuck;same_cat=2 → 注入"换思路"提示)。
+    # round1 错值 → round2 FAIL(same_cat=1,no_change=1)→ round3 同一错值 →
+    # round4 FAIL(same_cat=2,no_change=2,注入"换思路",不停)→ round5 消息含"换思路"
+    # 并 FAIL(same_cat=3,no_change=3 → stuck)。prompt 在停机前已送达 LLM。
     mock = _CapturingClient([
         {"when": "round 1", "action": WriteFile("calc.py", "def add(a,b):\n    return a+b+2\n"), "intent": "修1"},
         {"when": "round 2", "action": RunTests(), "intent": "跑"},
