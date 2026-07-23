@@ -89,7 +89,8 @@ class AgentLoop:
             self._approval_seq += 1
             aid = f"approval-{self._approval_seq}"
             self._pending_approval = {
-                "approval_id": aid, "action": action, "verdict": verdict, "decision": None,
+                "approval_id": aid, "action": action, "verdict": verdict,
+                "intent": intent, "decision": None,
             }
             self._new_approval.set()
             self._decision_ready.clear()
@@ -124,6 +125,18 @@ class AgentLoop:
         with self._lock:
             self._new_approval.clear()
             return self._pending_approval["approval_id"] if self._pending_approval else None
+
+    def current_pending(self) -> dict | None:
+        """非阻塞返回当前 pending 审批快照(供 WebUI/CLI 轮询);无则 None。不回显明文 key。"""
+        with self._lock:
+            if not self._pending_approval:
+                return None
+            p = self._pending_approval
+            return {
+                "approval_id": p["approval_id"],
+                "reason": getattr(p["verdict"], "reason", ""),
+                "intent": p.get("intent", ""),
+            }
 
     def run(self, task: str, ts_provider: Callable[[], str]) -> RunResult:
         state = LoopState()

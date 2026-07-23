@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import threading
 import uuid
 import tempfile
 from pathlib import Path
@@ -36,9 +37,11 @@ def create_app(
     *,
     project_root: Path | str = "./workspace",
     use_mock: bool = True,
+    mock_script: list | None = None,
 ) -> FastAPI:
     """构造 WebUI app。use_mock=True 用脚本化 mock LLM(不触网,供演示/测试);
-    use_mock=False 用真实 OpenAI 兼容客户端(凭据从 keychain 读)。"""
+    use_mock=False 用真实 OpenAI 兼容客户端(凭据从 keychain 读)。
+    mock_script 可注入自定义 mock 脚本(测试用,如触发 DeleteFile 审批)。"""
     app = FastAPI(title="Coding Agent Harness")
     state: dict[str, dict] = {}
     creds = Creds()
@@ -55,34 +58,42 @@ def create_app(
         task_id = uuid.uuid4().hex
         queue: asyncio.Queue = asyncio.Queue()
         events_log: list[dict] = []
-        # 捕获当前运行中的 event loop,on_event 在 agent.run 的 to_thread 线程里
-        # 被调,需跨线程把事件塞回此 loop 的 queue。
+        # 捕获当前运行中的 event loop,on_event 在 agent.run 的工作线程里被调,
+        # 需跨线程把事件塞回此 loop 的 queue(SSE 消费时排空)。
         loop = asyncio.get_running_loop()
 
-        def on_event(e: dict) -> None:
+        def emit(e: dict) -> None:
+            """跨线程把事件塞进 event loop 的 queue(供 SSE 消费);用 call_soon_threadsafe
+            + put_nowait(同步回调,不创建 coroutine),避免 loop 未运行时产生
+            'coroutine never awaited' 警告。事件同时进 events_log 兜底。"""
             events_log.append(e)
             try:
-                asyncio.run_coroutine_threadsafe(queue.put(e), loop)
+                loop.call_soon_threadsafe(queue.put_nowait, e)
             except RuntimeError:
-                # loop 已关闭(测试 teardown 场景):事件仍进 events_log,不崩。
+                # loop 已关闭(测试 teardown):事件已在 events_log,不崩。
                 pass
 
         mem = Memory(config.memory.fixes_path, config.memory.conventions_path, config.memory.retrieve_top_k)
-        llm = MockLLMClient(_demo_script()) if use_mock else _real_llm(creds)
-        agent = AgentLoop(llm=llm, config=config, memory=mem, on_event=on_event)
+        llm = MockLLMClient(mock_script if mock_script is not None else _demo_script()) if use_mock else _real_llm(creds)
+        # hitl_enabled=True 激活 §A.6 ① 审批链路:NeedsApproval 时挂起→发 pending_approval
+        # 事件→前端弹按钮→POST /approvals→approve 唤醒。red→green demo 无 DeleteFile 不会触发。
+        agent = AgentLoop(llm=llm, config=config, memory=mem, on_event=emit, hitl_enabled=True)
 
-        async def runner():
-            # try/finally 保证 loop_stopped 一定发出:即使 agent.run 抛异常,
-            # SSE 客户端也不会无限阻塞在 q.get()。异常时补一条 error 事件。
+        def worker():
+            # 在普通线程(非 asyncio task)里跑 agent.run,避免 TestClient 的 anyio
+            # task group 在请求结束时取消/等待未完成 task 致 submit 挂起。HITL 挂起
+            # (threading.Event)在此线程阻塞,不依赖 event loop;approve 经 /approvals
+            # 端点唤醒。try/except/finally 保证 loop_stopped 一定发出(SSE 不无限阻塞)。
             try:
-                await asyncio.to_thread(agent.run, req.task, lambda: "2026-07-22T00:00:00")
+                agent.run(req.task, lambda: "2026-07-22T00:00:00")
             except Exception as e:  # noqa: BLE001 给前端一个可见错误,不吞
-                await queue.put({"type": "error", "msg": str(e)})
+                emit({"type": "error", "msg": str(e)})
             finally:
-                await queue.put({"type": "loop_stopped"})
+                emit({"type": "loop_stopped"})
 
-        t = asyncio.create_task(runner())
-        state[task_id] = {"loop": agent, "queue": queue, "events": events_log, "task": t}
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        state[task_id] = {"loop": agent, "queue": queue, "events": events_log, "thread": thread}
         return {"task_id": task_id}
 
     @app.get("/api/tasks/{task_id}/events")
@@ -108,6 +119,17 @@ def create_app(
         agent = entry["loop"]
         agent.approve(aid, req.decision)
         return {"ok": True, "approved": req.decision}
+
+    @app.get("/api/tasks/{task_id}/pending")
+    def pending(task_id: str):
+        """非阻塞返回当前 pending 审批(供前端/CLI 轮询);无则 {"pending": false}。"""
+        entry = state.get(task_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="unknown task_id")
+        snap = entry["loop"].current_pending()
+        if not snap:
+            return {"pending": False}
+        return {"pending": True, **snap}
 
     @app.get("/api/credentials/status")
     def cred_status():
