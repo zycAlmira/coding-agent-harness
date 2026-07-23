@@ -49,6 +49,7 @@ def test_hitl_approve_then_execute(tmp_path):
     assert aid is not None
     loop.approve(aid, True)
     t.join(timeout=5)
+    assert not t.is_alive(), "run 线程应在审批后结束,未结束=挂起/死锁"
     assert not (ws / "calc.py").exists()       # 审批通过 → 真删
     assert box["r"].outcome == "stopped"        # 随后 Stop
 
@@ -68,6 +69,7 @@ def test_hitl_reject_keeps_file(tmp_path):
     assert aid is not None
     loop.approve(aid, False)
     t.join(timeout=5)
+    assert not t.is_alive(), "run 线程应在审批后结束,未结束=挂起/死锁"
     assert (ws / "calc.py").exists()            # 被拒 → 不删
     assert box["r"].outcome == "stopped"
 

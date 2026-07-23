@@ -73,12 +73,16 @@ class AgentLoop:
             msgs.append(Message("system", c))
         return msgs
 
-    def _suspend_for_approval(self, action, verdict) -> str:
+    def _suspend_for_approval(self, action, verdict) -> tuple[str, bool]:
         """登记一条 pending 审批并挂起循环,阻塞到 approve() 唤醒。
 
-        返回 approval_id(唤醒后供日志/事件用)。挂起用 threading.Event,
-        不取系统时间做判定,不依赖 LLM——人类决定经 approve() 注入后才恢复,
-        机制本身在给定 decision 下确定(§A.4 可单测)。
+        返回 (approval_id, decision)。挂起用 threading.Event,不取系统时间做判定,
+        不依赖 LLM——人类决定经 approve() 注入后才恢复,机制本身在给定 decision 下
+        确定(§A.4 可单测)。唤醒后在同一把锁内原子取回 decision 并清空 pending,
+        避免 run 线程与潜在的双击 approve 在锁外竞态(last-write-wins)。
+
+        注意:hitl_enabled=True 时 run() 会阻塞在此,必须在独立线程调用 run()
+        (否则主线程永久挂起);由 WebUI/CLI 的驱动方负责线程化。
         """
         with self._lock:
             self._approval_seq += 1
@@ -90,7 +94,11 @@ class AgentLoop:
             self._decision_ready.clear()
         # 阻塞:等待人类 approve。无超时——挂起即等待人类决策。
         self._decision_ready.wait()
-        return aid
+        with self._lock:
+            p = self._pending_approval
+            decision = bool(p["decision"]) if p else False
+            self._pending_approval = None
+        return aid, decision
 
     def approve(self, approval_id: str, decision: bool) -> None:
         """人类对 pending 审批给出决定并唤醒挂起的循环。
@@ -135,9 +143,7 @@ class AgentLoop:
             elif vname == "NeedsApproval":
                 if self.hitl_enabled:
                     # HITL 完整化:挂起循环等人类审批,据决定执行或回灌"被拒"
-                    aid = self._suspend_for_approval(turn.action, v)
-                    decision = self._pending_approval["decision"]
-                    self._pending_approval = None
+                    aid, decision = self._suspend_for_approval(turn.action, v)
                     if decision:
                         tr = self.dispatch(turn.action, self.config)
                         fb = None
