@@ -17,42 +17,47 @@ from coding_agent_harness.core.state import LoopState, update_after_feedback, de
 
 # Agent 可用工具清单(JSON Schema),供真实 LLM 的 function-calling 使用。
 # 参数名与 openai_compat._ACTION_BUILDERS 的 key 对齐。
+_INTENT_PROP = {"intent": {"type": "string", "description": "执行此动作的理由(一句话)"}}
+
 _AGENT_TOOLS = [
     ToolSchema("read_file", "读取文件内容", {
         "type": "object",
-        "properties": {"path": {"type": "string", "description": "文件路径"}},
-        "required": ["path"],
+        "properties": {**_INTENT_PROP, "path": {"type": "string", "description": "文件路径"}},
+        "required": ["path", "intent"],
     }),
     ToolSchema("write_file", "写入或覆写文件", {
         "type": "object",
-        "properties": {
+        "properties": {**_INTENT_PROP,
             "path": {"type": "string", "description": "文件路径"},
             "content": {"type": "string", "description": "文件内容"},
         },
-        "required": ["path", "content"],
+        "required": ["path", "content", "intent"],
     }),
     ToolSchema("delete_file", "删除文件", {
         "type": "object",
-        "properties": {"path": {"type": "string", "description": "文件路径"}},
-        "required": ["path"],
+        "properties": {**_INTENT_PROP, "path": {"type": "string", "description": "文件路径"}},
+        "required": ["path", "intent"],
     }),
     ToolSchema("list_dir", "列出目录下的文件", {
         "type": "object",
-        "properties": {"path": {"type": "string", "description": "目录路径"}},
-        "required": ["path"],
+        "properties": {**_INTENT_PROP, "path": {"type": "string", "description": "目录路径"}},
+        "required": ["path", "intent"],
     }),
     ToolSchema("run_shell", "执行 shell 命令", {
         "type": "object",
-        "properties": {"cmd": {"type": "string", "description": "要执行的命令"}},
-        "required": ["cmd"],
+        "properties": {**_INTENT_PROP, "cmd": {"type": "string", "description": "要执行的命令"}},
+        "required": ["cmd", "intent"],
     }),
     ToolSchema("run_tests", "运行测试(pytest)", {
-        "type": "object", "properties": {}, "required": [],
+        "type": "object", "properties": _INTENT_PROP, "required": ["intent"],
     }),
     ToolSchema("stop", "任务完成,停止", {
         "type": "object",
-        "properties": {"reason": {"type": "string", "description": "停止原因"}},
-        "required": [],
+        "properties": {
+            "reason": {"type": "string", "description": "停止原因"},
+            **_INTENT_PROP,
+        },
+        "required": ["intent"],
     }),
 ]
 
