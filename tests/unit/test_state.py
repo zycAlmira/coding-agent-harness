@@ -54,10 +54,11 @@ def test_stop_on_max_rounds():
     assert decide_stop(s, cfg) == "max_rounds"
 
 
-def test_stop_on_success():
+def test_pass_does_not_auto_stop():
+    # PASS 不再自动判 success——留给 agent 一轮机会总结再 stop。
     cfg = _cfg()
     s = LoopState(last_feedback_status="PASS")
-    assert decide_stop(s, cfg) == "success"
+    assert decide_stop(s, cfg) is None
 
 
 def test_no_stop_midway():

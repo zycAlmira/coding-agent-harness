@@ -57,8 +57,14 @@ class Stop:
     reason: str
 
 
+@dataclass(frozen=True)
+class Respond:
+    """LLM 输出的纯文本回复(非 tool call),用于回答问题或总结工作。"""
+    text: str
+
+
 # Action 联合类型:LLM 一轮可能产出的所有动作变体。
-Action = Union[WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Stop]
+Action = Union[WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Stop, Respond]
 
 
 # --- LLM 一次产出 ---

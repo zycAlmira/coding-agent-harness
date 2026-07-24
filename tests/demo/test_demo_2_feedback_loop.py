@@ -39,6 +39,6 @@ def test_failure_feedback_changes_next_action(tmp_path):
     mem = Memory(str(ws / "fixes.json"), str(ws / "conv.json"), 3)
     loop = AgentLoop(llm=mock, config=cfg, memory=mem)
     result = loop.run(task="修 add", ts_provider=lambda: "2026-07-22T00:00:00")
-    assert result.outcome == "success"
+    assert result.outcome == "stopped"  # PASS 后 agent 显式 Stop(不再自动判 success)
     pivot = [s for s in result.steps if s.turn and s.turn.intent == "上次断言失败,改 off-by-one"]
     assert pivot, "应存在因 AssertionFailure feedback 而改变动作的转折"

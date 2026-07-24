@@ -21,6 +21,7 @@ from coding_agent_harness.models import (
     ReadFile,
     ListDir,
     Stop,
+    Respond,
     Allow,
     Deny,
     NeedsApproval,
@@ -95,6 +96,6 @@ def guardrail(action: Action, config: Config):
             if _whitelist_hit(action.cmd, gr.shell_whitelist):
                 return Allow()
             return NeedsApproval(reason=f"执行 shell: {action.cmd}")
-        case ReadFile() | ListDir() | RunTests() | Stop():
-            # 只读/终止类动作放行
+        case ReadFile() | ListDir() | RunTests() | Stop() | Respond():
+            # 只读/终止/纯文本动作放行
             return Allow()

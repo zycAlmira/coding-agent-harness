@@ -2,7 +2,7 @@
 from __future__ import annotations
 from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
-    Action, ReadFile, WriteFile, DeleteFile, ListDir, RunShell, RunTests, Stop, ToolResult,
+    Action, ReadFile, WriteFile, DeleteFile, ListDir, RunShell, RunTests, Stop, Respond, ToolResult,
 )
 from coding_agent_harness.tools import files, shell, tests_runner
 
@@ -30,3 +30,6 @@ def dispatch(action: Action, config: Config) -> ToolResult:
         case Stop():
             # 停机动作:回灌 stop 标记与原因,主循环据此停机。
             return ToolResult(ok=True, output=f"stop: {action.reason}")
+        case Respond():
+            # 纯文本回复,无需执行,直接传递文本。
+            return ToolResult(ok=True, output=action.text[:2000])

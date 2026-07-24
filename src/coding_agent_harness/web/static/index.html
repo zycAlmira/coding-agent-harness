@@ -7,32 +7,32 @@
   <!-- Open Design 设计系统 token(以 CSS 变量注入;正式集成时替换为 Open Design 组件包) -->
   <style>
     :root {
-      --od-bg: #0f1115; --od-surface: #181b22; --od-text: #e6e6e6;
-      --od-accent: #4d8cff; --od-danger: #ff5d5d; --od-success: #3ecf8e;
-      --od-warn: #f5a623; --od-space: 12px; --od-radius: 8px;
+      --od-bg: #f5f5f5; --od-surface: #ffffff; --od-text: #1a1a1a;
+      --od-accent: #2563eb; --od-danger: #dc2626; --od-success: #16a34a;
+      --od-warn: #d97706; --od-space: 12px; --od-radius: 8px;
     }
     * { box-sizing: border-box; }
     body { margin:0; background:var(--od-bg); color:var(--od-text); font-family:system-ui,-apple-system,sans-serif; }
-    header { padding:var(--od-space); background:var(--od-surface); display:flex; gap:var(--od-space); align-items:center; }
-    input[type=text] { flex:1; padding:8px 10px; border-radius:var(--od-radius); border:1px solid #333; background:#111; color:var(--od-text); font-size:14px; }
+    header { padding:var(--od-space); background:var(--od-surface); display:flex; gap:var(--od-space); align-items:center; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+    input[type=text] { flex:1; padding:8px 10px; border-radius:var(--od-radius); border:1px solid #d1d5db; background:#fff; color:var(--od-text); font-size:14px; }
     button { padding:8px 12px; border:0; border-radius:var(--od-radius); background:var(--od-accent); color:#fff; cursor:pointer; font-size:14px; }
     button:hover { filter: brightness(1.1); }
     button.deny { background:var(--od-danger); }
-    button.ghost { background:#2a2f3a; }
+    button.ghost { background:#e5e7eb; color:var(--od-text); }
     main { display:grid; grid-template-columns:2fr 1fr; gap:var(--od-space); padding:var(--od-space); }
-    #timeline { background:var(--od-surface); border-radius:var(--od-radius); padding:var(--od-space); overflow:auto; height:80vh; }
-    #status { background:var(--od-surface); border-radius:var(--od-radius); padding:var(--od-space); height:80vh; overflow:auto; }
-    .step { border-left:3px solid var(--od-accent); margin:8px 0; padding:6px 10px; }
+    #timeline { background:var(--od-surface); border-radius:var(--od-radius); padding:var(--od-space); overflow:auto; height:80vh; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+    #status { background:var(--od-surface); border-radius:var(--od-radius); padding:var(--od-space); height:80vh; overflow:auto; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+    .step { border-left:3px solid var(--od-accent); margin:8px 0; padding:6px 10px; background:#f9fafb; }
     .step.deny { border-color:var(--od-danger); }
     .step.pass { border-color:var(--od-success); }
     .step.approval { border-color:var(--od-warn); }
-    .intent { color:#9bb; font-style:italic; margin-top:2px; }
-    .meta { color:#777; font-size:12px; }
+    .intent { color:#6b7280; font-style:italic; margin-top:2px; }
+    .meta { color:#9ca3af; font-size:12px; }
     .approve-btns button { margin-right:6px; }
-    .cred-modal { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; }
+    .cred-modal { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:center; justify-content:center; }
     .cred-modal.show { display:flex; }
-    .cred-modal form { background:var(--od-surface); padding:20px; border-radius:8px; display:grid; gap:8px; width:360px; }
-    .cred-modal input { padding:8px; border-radius:6px; border:1px solid #333; background:#111; color:var(--od-text); }
+    .cred-modal form { background:var(--od-surface); padding:20px; border-radius:8px; display:grid; gap:8px; width:360px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+    .cred-modal input { padding:8px; border-radius:6px; border:1px solid #d1d5db; background:#fff; color:var(--od-text); }
   </style>
 </head>
 <body>
@@ -98,6 +98,11 @@
           <button class="deny" onclick="approve('${e.approval_id}', false)">拒绝</button></div>`;
         tl.innerHTML += `<div class="step approval"><div>需审批:${e.reason||''}</div>
           <div class="intent">intent: ${e.intent||''}</div>${btns}</div>`;
+        tl.scrollTop = tl.scrollHeight;
+        return;
+      }
+      if (e.type === 'response') {
+        tl.innerHTML += `<div class="step" style="border-color:#8b5cf6;background:#f5f3ff"><div>💬 agent</div><div style="margin-top:4px;white-space:pre-wrap">${e.text||''}</div></div>`;
         tl.scrollTop = tl.scrollHeight;
         return;
       }

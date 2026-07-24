@@ -92,8 +92,8 @@ def decide_stop(state: LoopState, config: Config) -> str | None:
     判定优先级:成功 > 回合上限 > 同类停机 > 无变化停机。确定性纯函数。
     """
     gr = config.guardrails
-    if state.last_feedback_status == "PASS":
-        return "success"
+    # PASS 不再自动判"success"——留给 agent 一轮机会总结工作文字描述再 stop。
+    # max_rounds 兜底防止无限循环。
     if state.rounds >= gr.max_rounds:
         return "max_rounds"
     if state.same_category_streak >= gr.same_category_stop_at:

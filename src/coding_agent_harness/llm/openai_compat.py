@@ -4,7 +4,7 @@ import json
 import logging
 import httpx
 from coding_agent_harness.models import (
-    AssistantTurn, Action, WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Stop,
+    AssistantTurn, Action, WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Stop, Respond,
 )
 
 log = logging.getLogger(__name__)
@@ -53,8 +53,14 @@ class OpenAICompatibleClient:
         resp.raise_for_status()
         msg = resp.json()["choices"][0]["message"]
         tcs = msg.get("tool_calls") or []
+        content = msg.get("content") or ""
         if not tcs:
-            return AssistantTurn(action=Stop("no_tool_call"), intent=msg.get("content", "")[:200], raw=str(msg))
+            # LLM 输出纯文本(回答问题/总结工作等):返回 Respond 动作,
+            # 主循环将其发送给前端并继续,LLM 可在后续轮调用 stop 或继续操作。
+            if content.strip():
+                return AssistantTurn(action=Respond(content[:2000]), intent="回复", raw=str(msg))
+            # 空内容:退化为 stop(罕见,可能是 API 异常)。
+            return AssistantTurn(action=Stop("no_tool_call"), intent="", raw=str(msg))
         tc = tcs[0]["function"]
         action, intent = parse_tool_call(tc)
         log.debug("llm intent=%s action=%s", intent, type(action).__name__)  # key 不进日志

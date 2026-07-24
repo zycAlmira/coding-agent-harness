@@ -44,5 +44,5 @@ def test_loop_red_to_green(tmp_path):
     mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
     loop = AgentLoop(llm=mock, config=cfg, memory=mem)
     result = loop.run(task="修 add 的 bug", ts_provider=lambda: "2026-07-22T00:00:00")
-    assert result.outcome == "success"
+    assert result.outcome == "stopped"  # PASS 后 agent 显式 Stop(不再自动判 success)
     assert any(s.turn.intent == "上次断言失败,改 off-by-one" for s in result.steps)

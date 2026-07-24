@@ -5,7 +5,7 @@ import threading
 from typing import Callable
 from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
-    RunTests, Stop, ToolResult, Step, RunResult, Fix,
+    RunTests, Stop, ToolResult, Step, RunResult, Fix, Respond,
 )
 from coding_agent_harness.llm.base import LLMClient, Message, ToolSchema
 from coding_agent_harness.tools.dispatch import dispatch
@@ -51,13 +51,13 @@ _AGENT_TOOLS = [
     ToolSchema("run_tests", "运行测试(pytest)", {
         "type": "object", "properties": _INTENT_PROP, "required": ["intent"],
     }),
-    ToolSchema("stop", "任务完成,停止", {
+    ToolSchema("stop", "任务完成,停止。在 reason 中描述你的修改内容和结果。", {
         "type": "object",
         "properties": {
-            "reason": {"type": "string", "description": "停止原因"},
+            "reason": {"type": "string", "description": "你做了什么修改、测试结果如何(用自然语言叙述,如'修改了 calc.py 将 add 函数返回值从 a+b 改为 a+b+1,add(2,2)=5 符合测试断言,1 个测试全部通过')"},
             **_INTENT_PROP,
         },
-        "required": ["intent"],
+        "required": ["reason", "intent"],
     }),
 ]
 
@@ -99,6 +99,9 @@ class AgentLoop:
             "\n重要规则:"
             "\n- 修复实现代码(src),不要修改测试文件。测试断言是真理,实现代码必须迁就测试。"
             "\n- 先读代码理解问题,再动手修改,最后跑测试验证。"
+            "\n- 测试通过后,先输出一段文字总结(不调用任何工具),再调用 stop。"
+            "\n  例如:测试全部通过。修改内容:把 add 的返回值从 a+b 改为 a+b+1,使得 add(2,2)=5 符合测试断言。"
+            "\n- 可以随时用文字回答问题或说明当前进展(不调用工具即可)。"
             + ("\n项目约定:\n" + "\n".join(convs) if convs else "")
         ))
         msgs = [sys, Message("user", task)]
@@ -122,7 +125,7 @@ class AgentLoop:
                         lines.append("历史同类修复:")
                         for h in hist:
                             lines.append(f"  - {h.symptom} → {h.fix}")
-                msgs.append(Message("tool", "\n".join(lines)))
+                msgs.append(Message("user", "\n".join(lines)))  # user 角色兼容所有 API("tool" 需 tool_call_id 配对)
         for c in state.context_injected:
             msgs.append(Message("system", c))
         return msgs
@@ -206,6 +209,13 @@ class AgentLoop:
                 outcome = "error"
                 steps.append(Step(turn=None, verdict=None, tool_result=None, feedback=None, ts=ts_provider()))
                 break
+            # 纯文本回复(非 tool call):发送给前端,记录对话历史,继续循环。
+            # LLM 可在回复后调用工具或 stop,实现"回答+操作"穿插。
+            if isinstance(turn.action, Respond):
+                self.on_event({"type": "response", "text": turn.action.text})
+                self.conversation_history.append(Message("assistant", turn.action.text[:2000]))
+                steps.append(Step(turn=turn, verdict=None, tool_result=ToolResult(ok=True, output=turn.action.text), feedback=None, ts=ts_provider()))
+                continue
             v = self.guard(turn.action, self.config)
             self.on_event({"type": "guardrail_verdict", "verdict": type(v).__name__, "intent": turn.intent})
             vname = type(v).__name__
@@ -255,8 +265,18 @@ class AgentLoop:
             ))
             if fb:
                 state = update_after_feedback(state, fb, self.config)
+                # 测试通过后不自动停机,注入提示引导 agent 总结工作再 stop。
+                if fb.status == "PASS":
+                    state.context_injected.append(
+                        "测试全部通过!调用 stop,在 reason 字段里用自然语言说明你做了什么修改。"
+                        "例如 reason:'修改了 calc.py,将 add 返回值从 a+b 改为 a+b+1,"
+                        "使 add(2,2)=5 通过测试。'"
+                    )
             final_fb = fb or final_fb
             if isinstance(turn.action, Stop):
+                # Stop.reason 承载了 agent 的工作总结,发送给前端显示。
+                if turn.action.reason and turn.action.reason not in ("no_tool_call", "done", ""):
+                    self.on_event({"type": "response", "text": turn.action.reason})
                 outcome = "stopped"
                 break
             stop = decide_stop(state, self.config)
