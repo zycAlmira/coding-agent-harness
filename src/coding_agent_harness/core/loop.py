@@ -5,12 +5,12 @@ import threading
 from typing import Callable
 from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
-    RunTests, Stop, ToolResult, Step, RunResult, Fix, Respond,
+    RunTests, Stop, ToolResult, Step, RunResult, Fix, Respond, WriteFile,
 )
 from coding_agent_harness.llm.base import LLMClient, Message, ToolSchema
 from coding_agent_harness.tools.dispatch import dispatch
 from coding_agent_harness.feedback.validator import Validator
-from coding_agent_harness.feedback.taxonomy import strategy_hint
+from coding_agent_harness.feedback.taxonomy import strategy_hint, FailureCategory
 from coding_agent_harness.guardrails.guardrail import guardrail
 from coding_agent_harness.core.state import LoopState, update_after_feedback, decide_stop
 
@@ -283,11 +283,54 @@ class AgentLoop:
             if stop:
                 outcome = stop
                 break
-        # 任务结束记录记忆(循环外写,不破坏确定性)
-        if final_fb and final_fb.status == "FAIL" and final_fb.failed_tests:
-            cat = final_fb.failed_tests[0].category
-            self.memory.record_fix(Fix(category=cat.value, symptom=final_fb.summary, fix="(未修复)", timestamp=ts_provider()))
+        # 任务结束记录记忆(循环外写,不破坏确定性)。
+        # 成功:记录修改内容与测试结果;失败:记录症状,尝试提取已做的修改。
+        self._record_memory(state, steps, final_fb, outcome, ts_provider)
         return RunResult(outcome=outcome, steps=steps, final_feedback=final_fb)
+
+    def _record_memory(self, state, steps, final_fb, outcome, ts_provider):
+        """从步骤中提取修复内容并写入记忆。成功/失败都记,fix 字段填实际修改。"""
+        if final_fb is None:
+            return
+
+        # 确定分类:优先用当前反馈的失败用例,其次查历史,再无则用 Unknown。
+        cat = None
+        if final_fb.failed_tests:
+            cat = final_fb.failed_tests[0].category
+        elif final_fb.status == "PASS":
+            # 全部通过:从历史中找最近一次 FAIL 的 category(本轮修复的目标)。
+            for fb in reversed(state.feedback_history):
+                if fb.status == "FAIL" and fb.failed_tests:
+                    cat = fb.failed_tests[0].category
+                    break
+            # 无历史失败但有实际修改:用 Unknown 兜底,确保成功修复也被记录。
+            if cat is None:
+                cat = FailureCategory.Unknown
+        if cat is None:
+            return  # 无法归类,跳过
+
+        # 提取修改内容:1) 从 WriteFile 步骤取文件路径 + 意图;
+        # 2) 从 Stop 步骤的 reason 取工作总结。
+        fix_parts = []
+        for s in steps:
+            if s.turn and isinstance(s.turn.action, WriteFile):
+                fix_parts.append(f"{s.turn.action.path}: {s.turn.intent}")
+        stop_reason = ""
+        for s in reversed(steps):
+            if s.turn and isinstance(s.turn.action, Stop) and s.turn.action.reason:
+                stop_reason = s.turn.action.reason
+                break
+        if stop_reason and stop_reason not in ("no_tool_call", "done"):
+            fix_parts.append(f"总结: {stop_reason}")
+        fix = "; ".join(fix_parts) if fix_parts else "(无具体修改记录)"
+
+        symptom = final_fb.summary
+        if final_fb.status == "PASS":
+            symptom = f"修复成功: {final_fb.summary}"
+
+        self.memory.record_fix(Fix(
+            category=cat.value, symptom=symptom, fix=fix, timestamp=ts_provider(),
+        ))
 
 
 def _fb_to_dict(fb):
