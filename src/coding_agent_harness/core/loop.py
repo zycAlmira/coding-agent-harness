@@ -7,12 +7,54 @@ from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
     RunTests, Stop, ToolResult, Step, RunResult, Fix,
 )
-from coding_agent_harness.llm.base import LLMClient, Message
+from coding_agent_harness.llm.base import LLMClient, Message, ToolSchema
 from coding_agent_harness.tools.dispatch import dispatch
 from coding_agent_harness.feedback.validator import Validator
 from coding_agent_harness.feedback.taxonomy import strategy_hint
 from coding_agent_harness.guardrails.guardrail import guardrail
 from coding_agent_harness.core.state import LoopState, update_after_feedback, decide_stop
+
+
+# Agent 可用工具清单(JSON Schema),供真实 LLM 的 function-calling 使用。
+# 参数名与 openai_compat._ACTION_BUILDERS 的 key 对齐。
+_AGENT_TOOLS = [
+    ToolSchema("read_file", "读取文件内容", {
+        "type": "object",
+        "properties": {"path": {"type": "string", "description": "文件路径"}},
+        "required": ["path"],
+    }),
+    ToolSchema("write_file", "写入或覆写文件", {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "文件路径"},
+            "content": {"type": "string", "description": "文件内容"},
+        },
+        "required": ["path", "content"],
+    }),
+    ToolSchema("delete_file", "删除文件", {
+        "type": "object",
+        "properties": {"path": {"type": "string", "description": "文件路径"}},
+        "required": ["path"],
+    }),
+    ToolSchema("list_dir", "列出目录下的文件", {
+        "type": "object",
+        "properties": {"path": {"type": "string", "description": "目录路径"}},
+        "required": ["path"],
+    }),
+    ToolSchema("run_shell", "执行 shell 命令", {
+        "type": "object",
+        "properties": {"cmd": {"type": "string", "description": "要执行的命令"}},
+        "required": ["cmd"],
+    }),
+    ToolSchema("run_tests", "运行测试(pytest)", {
+        "type": "object", "properties": {}, "required": [],
+    }),
+    ToolSchema("stop", "任务完成,停止", {
+        "type": "object",
+        "properties": {"reason": {"type": "string", "description": "停止原因"}},
+        "required": [],
+    }),
+]
 
 
 class AgentLoop:
@@ -42,15 +84,22 @@ class AgentLoop:
         self._lock = threading.Lock()
         self._new_approval = threading.Event()    # 有 pending 审批出现时 set(供外部等待)
         self._decision_ready = threading.Event()  # approve() 调用后 set(唤醒挂起的循环)
+        self.conversation_history: list[Message] = []  # 对话历史:每轮追加 assistant + tool 消息
 
     def _build_messages(self, task: str, state: LoopState) -> list[Message]:
         convs = self.memory.load_conventions()
         sys = Message("system", (
             "你是一个 coding agent。可用工具:read_file/write_file/delete_file/list_dir/run_shell/run_tests/stop。"
-            "每次输出一个动作并附 intent(一句话说明动机)。"
+            "每次输出一个工具调用并附 intent(一句话说明动机)。"
+            "\n重要规则:"
+            "\n- 修复实现代码(src),不要修改测试文件。测试断言是真理,实现代码必须迁就测试。"
+            "\n- 先读代码理解问题,再动手修改,最后跑测试验证。"
             + ("\n项目约定:\n" + "\n".join(convs) if convs else "")
         ))
         msgs = [sys, Message("user", task)]
+        # 追加对话历史(之前各轮的 assistant 动作 + tool 结果),
+        # 让真实 LLM 拥有完整上下文记忆(mock 客户端忽略 messages,不受影响)。
+        msgs.extend(self.conversation_history)
         if state.feedback_history:
             fb = state.feedback_history[-1]
             if fb.status == "FAIL":
@@ -147,7 +196,7 @@ class AgentLoop:
             state.rounds += 1
             msgs = self._build_messages(task, state)
             try:
-                turn = self.llm.complete(msgs, [], state.snapshot())
+                turn = self.llm.complete(msgs, _AGENT_TOOLS, state.snapshot())
             except RuntimeError:
                 outcome = "error"
                 steps.append(Step(turn=None, verdict=None, tool_result=None, feedback=None, ts=ts_provider()))
@@ -183,6 +232,22 @@ class AgentLoop:
                     tr = ToolResult(ok=fb.status == "PASS", output=tr.output, structured=tr.structured, error=None)
             self.on_event({"type": "tool_result", "ok": tr.ok, "feedback": _fb_to_dict(fb)})
             steps.append(Step(turn=turn, verdict=v, tool_result=tr, feedback=fb, ts=ts_provider()))
+            # 记录本轮对话历史(下轮 _build_messages 时追加到消息列表),
+            # 让真实 LLM 能基于之前的执行结果做下一步决策。
+            # 用 "user" 角色(而非 assistant+tool)回灌,避免与 OpenAI
+            # function-calling 协议的 assistant/tool 角色语义冲突——
+            # 我们的 Message 抽象只有 role+content,无法表达
+            # tool_calls/tool_call_id 结构;用 user 消息告知"上一步做了什么、
+            # 结果是什么",让模型清楚知道需要继续输出下一个 function call。
+            action_name = type(turn.action).__name__
+            output_text = tr.output if tr.output else (tr.error or "(无输出)")
+            self.conversation_history.append(Message(
+                "user",
+                f"[上一步] {action_name}: {turn.intent}\n"
+                f"[结果]\n{output_text[:1500]}\n\n"
+                f"请基于以上结果,输出下一个工具调用继续完成任务。"
+                f"如果任务已完成,调用 stop。"
+            ))
             if fb:
                 state = update_after_feedback(state, fb, self.config)
             final_fb = fb or final_fb
