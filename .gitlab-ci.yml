@@ -26,7 +26,7 @@ unit-test:
   stage: test
   before_script:
     - pip install --cache-dir=.pip-cache uv
-    - uv sync --frozen --no-progress
+    - uv sync --no-progress
   script:
     - uv run pytest -q
   rules:
