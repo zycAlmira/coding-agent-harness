@@ -21,7 +21,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync --no-progress
+      - run: uv sync --frozen --extra dev --no-progress
       - run: uv run pytest -q
 
   build-image:
