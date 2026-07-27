@@ -1,0 +1,33 @@
+# GitHub Actions CI — AI4SE Project A Coding Agent Harness
+# 通用要求 §五.6: 必须含名为 unit-test 的 job。
+# §4.8: 每次 push 自动跑测试。§4.10: 容器分发须含镜像构建步骤。
+# §A.4 精神: 配置正确性由 tests/unit/test_ci_config.py 确定性单测保护。
+# 注: 原始 .gitlab-ci.yml 保留不动，本文件为 GitHub 平台适配。
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  unit-test:
+    name: unit-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --no-progress
+      - run: uv run pytest -q
+
+  build-image:
+    name: build-image
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t coding-agent-harness:ci .
