@@ -33,6 +33,22 @@ class Creds:
         # 只返回布尔存在性,绝不回显明文 key。
         return {"set": bool(keyring.get_password(self.service, "api_key"))}
 
+    def info(self) -> dict:
+        """返回非敏感配置(base_url、model),不回显 api_key。供前端展示。"""
+        if not keyring.get_password(self.service, "api_key"):
+            return {"configured": False, "base_url": "", "model": ""}
+        return {
+            "configured": True,
+            "base_url": keyring.get_password(self.service, "base_url") or "",
+            "model": keyring.get_password(self.service, "model") or "",
+        }
+
+    def set_model(self, model: str) -> None:
+        """仅更新模型名,保留现有 api_key 和 base_url。"""
+        cred = self.get()
+        if cred:
+            self.set(cred[0], cred[1], model)
+
     def clear(self) -> None:
         for u in ("api_key", "base_url", "model"):
             try:
