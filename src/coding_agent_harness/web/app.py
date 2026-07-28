@@ -188,16 +188,13 @@ def _build_file_tree(root: Path, rel: Path | None = None, depth: int = 0) -> dic
         for entry in entries:
             if entry.name.startswith("."):
                 continue
-            if entry.name in ("__pycache__", "node_modules", ".venv", "venv", ".git", "dist", ".pytest_cache"):
+            if entry.name in ("__pycache__", "node_modules", ".venv", "venv", ".git", "dist", ".pytest_cache", ".ruff_cache", ".mypy_cache"):
                 continue
             if entry.is_dir():
                 child = _build_file_tree(root, rel / entry.name, depth + 1)
                 children.append(child)
-            elif entry.is_file() and entry.suffix in (
-                ".py", ".md", ".yaml", ".yml", ".txt", ".json", ".toml",
-                ".cfg", ".ini", ".sh", ".html", ".css", ".js", ".ts", ".rs",
-                ".go", ".java", ".c", ".cpp", ".h", ".Dockerfile", ".dockerignore",
-            ):
+            elif entry.is_file():
+                # 所有文件都展示,前端用 emoji 区分类型
                 children.append({"name": entry.name, "path": str(rel / entry.name), "type": "file"})
         return {"name": name, "path": str(rel), "type": "dir", "children": children}
     return {"name": name, "path": str(rel), "type": "unknown"}
@@ -573,7 +570,7 @@ def _demo_script():
         {"when": "round 2", "action": RunTests(), "intent": "验证修复"},
         {"when": "round 4", "action": RunTests(), "intent": "再验证"},
         {"when": "feedback.category == AssertionFailure", "action": WriteFile("calc.py", "def add(a,b):\n    return a+b+1\n"), "intent": "上次断言失败,改 off-by-one"},
-        {"when": "feedback.status == PASS", "action": Stop("done"), "intent": "测试全绿,完成"},
+        {"when": "feedback.status == PASS", "action": Stop("修复完成:将 calc.py 中 add 函数的返回值从 a+b+2 改为 a+b+1,使得 add(2,2)=5 通过测试断言。1 个测试全部通过。"), "intent": "总结并停止"},
     ]
 
 

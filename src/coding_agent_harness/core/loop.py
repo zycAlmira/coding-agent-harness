@@ -95,14 +95,17 @@ class AgentLoop:
         convs = self.memory.load_conventions()
         sys = Message("system", (
             "你是一个 coding agent。可用工具:read_file/write_file/delete_file/list_dir/run_shell/run_tests/stop。"
-            "每次输出一个工具调用并附 intent(一句话说明动机)。"
-            "\n重要规则:"
-            "\n- 【代码修改任务】先读代码理解问题→动手修改→跑测试验证→文字总结→stop。测试断言是真理,实现代码必须迁就测试,不要修改测试文件。"
-            "\n- 【非代码任务】如用户只是问问题、查看文件、解释概念、浏览项目,直接用文字回复,不需要运行测试。完成回复后调用 stop。"
-            "\n- 判断标准:用户要求改代码/修 bug/加功能时才需要测试;只问问题/查看/了解信息时不要测试。"
-            "\n- 工作完成后,先输出一段文字总结(不调用任何工具),再调用 stop。"
-            "\n  例如:测试全部通过。修改内容:把 add 的返回值从 a+b 改为 a+b+1,使得 add(2,2)=5 符合测试断言。"
-            "\n- 可以随时用文字回答问题或说明当前进展(不调用工具即可)。"
+            "\n\n工作流程(必须遵守):"
+            "\n1. 每次只输出一个工具调用,并附 intent(一句话动机)。"
+            "\n2. 工具执行后你会看到结果;根据结果决定下一步。"
+            "\n3. 【关键】完成所有工具操作后,必须先用纯文字回复用户(不调任何工具),然后才调 stop。"
+            "\n   例如查文件→用文字说明查到了什么;改代码→用文字说明改了什么;修bug→用文字说明修复结果。"
+            "\n   禁止在没有任何文字回复的情况下直接 stop!"
+            "\n\n任务类型判断:"
+            "\n- 【代码修改】用户要求改代码/修bug/加功能:读→改→测试→文字总结→stop"
+            "\n- 【查看/问答】用户只问问题、查看文件、了解项目:直接文字回复→stop。不要跑测试!"
+            "\n\n其他规则:"
+            "\n- 测试断言是真理,实现代码必须迁就测试,不要修改测试文件。"
             + ("\n项目约定:\n" + "\n".join(convs) if convs else "")
         ))
         msgs = [sys, Message("user", task)]
@@ -260,12 +263,19 @@ class AgentLoop:
             # 结果是什么",让模型清楚知道需要继续输出下一个 function call。
             action_name = type(turn.action).__name__
             output_text = tr.output if tr.output else (tr.error or "(无输出)")
+            # 根据动作类型给不同的后续提示
+            if action_name in ("ReadFile", "ListDir"):
+                next_hint = "请用文字描述你看到了什么,然后决定下一步操作。任务完成则输出文字总结后调用 stop。"
+            elif action_name in ("RunTests",):
+                next_hint = "请根据测试结果用文字说明情况,然后决定下一步。全部通过则输出文字总结后调用 stop。"
+            elif action_name in ("WriteFile",):
+                next_hint = "修改已完成。如果需要验证请跑测试,否则用文字说明修改了什么。任务完成则输出文字总结后调用 stop。"
+            else:
+                next_hint = "请基于以上结果输出下一个工具调用。如果任务已完成,用文字总结后调用 stop。"
             self.conversation_history.append(Message(
                 "user",
                 f"[上一步] {action_name}: {turn.intent}\n"
-                f"[结果]\n{output_text[:1500]}\n\n"
-                f"请基于以上结果,输出下一个工具调用继续完成任务。"
-                f"如果任务已完成,调用 stop。"
+                f"[结果]\n{output_text[:1500]}\n\n{next_hint}"
             ))
             if fb:
                 state = update_after_feedback(state, fb, self.config)

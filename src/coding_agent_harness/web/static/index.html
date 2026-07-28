@@ -528,21 +528,28 @@
 
     // ═══════ 侧栏: 历史 ═══════
     function loadHistory() {
-      fetch('/api/conversations').then(r => r.json()).then(d => {
-        const pane = document.getElementById('paneHistory');
+      const pane = document.getElementById('paneHistory');
+      pane.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:8px;text-align:center">⏳ 加载中…</div>';
+      fetch('/api/conversations').then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(d => {
         if (!d.conversations || !d.conversations.length) {
-          pane.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:8px">暂无历史</div>';
+          pane.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:16px;text-align:center">📋 暂无历史<br><span style="font-size:11px">完成一次对话后自动保存</span></div>';
           return;
         }
         pane.innerHTML = d.conversations.map(c => {
           const active = c.id === currentConvId ? ' active' : '';
           const ts = c.updated_at ? new Date(c.updated_at).toLocaleString('zh') : '';
-          return `<div class="hist-item${active}" onclick="loadConversation('${c.id}')" title="${esc(c.title)}">
-            <span class="hi-del" onclick="event.stopPropagation();deleteConv('${c.id}')">×</span>
+          return `<div class="hist-item${active}" onclick="loadConversation('${c.id.replace(/'/g, "\\'")}')" title="${esc(c.title)}">
+            <span class="hi-del" onclick="event.stopPropagation();deleteConv('${c.id.replace(/'/g, "\\'")}')">×</span>
             <div class="hi-title">${esc(c.title).substring(0,50)}</div>
             <div class="hi-meta">${c.turn_count}轮 · ${c.mode} · ${ts}</div>
           </div>`;
         }).join('');
+        if (pane.scrollTop !== undefined) pane.scrollTop = 0;
+      }).catch(e => {
+        pane.innerHTML = `<div style="color:var(--danger);font-size:12px;padding:8px">⚠️ 加载失败: ${esc(e.message)}</div>`;
       });
     }
 
@@ -636,19 +643,34 @@
     }
 
     function loadFileTree() {
-      fetch('/api/workspace/tree').then(r => r.json()).then(tree => {
-        document.getElementById('paneFiles').innerHTML = renderTree(tree, 0);
+      const pane = document.getElementById('paneFiles');
+      pane.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:8px;text-align:center">⏳ 加载中…</div>';
+      fetch('/api/workspace/tree').then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(tree => {
+        if (!tree || tree.error) {
+          pane.innerHTML = `<div style="color:var(--danger);font-size:12px;padding:8px">⚠️ ${esc(tree?.error||'无法读取')}</div>`;
+          return;
+        }
+        const html = renderTree(tree, 0);
+        pane.innerHTML = html || '<div style="color:var(--text2);font-size:12px;padding:8px">📂 目录为空</div>';
+      }).catch(e => {
+        pane.innerHTML = `<div style="color:var(--danger);font-size:12px;padding:8px">⚠️ 加载失败: ${esc(e.message)}<br><button onclick="loadFileTree()" style="margin-top:4px;font-size:11px;background:none;color:var(--accent);border:1px solid var(--accent);padding:2px 8px;border-radius:4px;cursor:pointer">重试</button></div>`;
       });
     }
 
     function renderTree(node, depth) {
-      if (node.type === 'file') {
-        return `<div class="ft-item ft-file" onclick="viewFile('${esc(node.path)}')" title="${esc(node.path)}">📄 ${esc(node.name)}</div>`;
+      if (!node || node.type === 'error') {
+        return `<div class="ft-item" style="color:var(--danger);padding-left:${depth*12}px">⚠️ ${esc(node?.error||node?.name||'?')}</div>`;
       }
-      const id = 'ft-' + node.path.replace(/[^a-zA-Z0-9]/g, '_');
+      if (node.type === 'file') {
+        return `<div class="ft-item ft-file" onclick="viewFile('${escJs(node.path)}')" title="${esc(node.path)}">📄 ${esc(node.name)}</div>`;
+      }
+      const id = 'ft-' + (node.path||'').replace(/[^a-zA-Z0-9一-鿿]/g, '_');
       const kids = node.children;
       const hasKids = kids && kids.length > 0;
-      let html = `<div class="ft-item" onclick="toggleFT('${id}')" style="padding-left:${depth*12}px">
+      let html = `<div class="ft-item ft-dir" onclick="toggleFT('${escJs(id)}')" style="padding-left:${depth*12}px">
         <span class="ft-toggle" id="${id}-tog">${hasKids ? '▼' : '▶'}</span>📁 ${esc(node.name)}</div>`;
       if (hasKids) {
         html += `<div id="${id}-kids" style="display:block">`;
@@ -712,7 +734,8 @@
       }, 12);
     }
 
-    function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function escJs(s) { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
 
     const ACTION_ICONS = {
       'read_file':'📖', 'write_file':'✏️', 'delete_file':'🗑️', 'list_dir':'📂',
