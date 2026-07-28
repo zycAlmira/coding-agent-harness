@@ -72,7 +72,7 @@ docker run -p 8000:8000 coding-agent-harness
 
 镜像默认 `harness serve`(mock LLM),提供可访问 WebUI(§A.6 机制演示 + §五.9)。真实 LLM 经 WebUI 凭据端点 `POST /api/credentials/set` 录入(不硬编码进镜像)。
 
-CI(`.gitlab-ci.yml`)含 `build-image` job(docker-in-docker,构建 + 推送 GitLab registry),在 `main` 分支且 `Dockerfile` 存在时自动跑(§4.10)。
+CI 双平台配置:`.gitlab-ci.yml`(GitLab CI,含 `unit-test` + `build-image` job)与 `.github/workflows/ci.yml`(GitHub Actions,含 `unit-test` + `build-image` job)。`build-image` 在 `main` 分支且 `Dockerfile` 存在时自动跑(§4.10)。
 
 ## 部署架构
 
@@ -172,4 +172,4 @@ uv run pytest tests/demo/ -v
 
 ---
 
-测试现状:`make test` → 全套件通过(mock-LLM 确定性单测,不依赖网络与真实 LLM)。最后一次 CI pass 由 GitLab pipeline 产生(`unit-test` job)。
+测试现状:`make test` → 全套件通过(mock-LLM 确定性单测,不依赖网络与真实 LLM)。CI(`unit-test` job)在 GitHub Actions 与 GitLab CI 双平台通过。

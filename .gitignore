@@ -8,3 +8,7 @@ memory/fixes.json
 .uv-cache/
 .pip-cache/
 dist/
+config.yaml
+workspace/
+*.pptx
+*.pdf

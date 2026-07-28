@@ -37,7 +37,7 @@
 </head>
 <body>
   <header>
-    <input id="task" type="text" placeholder="描述任务,如:修 add 的 bug" />
+    <input id="task" type="text" placeholder="描述任务,如:修 add 的 bug" onkeydown="if(event.key==='Enter')start()" />
     <button onclick="start()">开始</button>
     <button class="ghost" onclick="openCreds()">凭据</button>
   </header>
