@@ -76,16 +76,42 @@ CI(`.gitlab-ci.yml`)含 `build-image` job(docker-in-docker,构建 + 推送 GitLa
 
 ## 部署架构
 
-云部署用 [Fly.io](https://fly.io)(通用 §4.11 学生免费额度):
+云部署用阿里云轻量应用服务器 / ECS(通用 §4.11):
+
+### 准备工作
+
+1. 阿里云账号 + 一台轻量应用服务器或 ECS(最低配置即可,1 核 1G 够用)
+2. 安全组放行 80 端口(HTTP)
+3. 服务器安装 Docker:
+   ```bash
+   # 在服务器上执行
+   curl -fsSL https://get.docker.com | sh
+   ```
+
+### 一键部署
 
 ```bash
-# 首次:flyctl auth login && flyctl apps create coding-agent-harness-ai4se
-sh scripts/deploy.sh     # flyctl deploy --strategy=rolling,打印公网 hostname
+# 设置服务器 IP,然后部署
+export ALIYUN_HOST=47.96.x.x        # 换成你的服务器公网 IP
+export ALIYUN_USER=root
+sh scripts/deploy-aliyun.sh
 ```
 
-- `fly.toml`:region `nrt`,internal_port 8000,healthcheck `GET /`,auto_start/stop_machines(免费层),512MB shared。
-- CI/CD:`unit-test` job 每次 push/MR 跑测试(§4.8);`build-image` job 在 main 构建推送镜像。
-- **线上部署 URL**:`<部署后由用户填入 Fly.io 公网 URL,形如 https://coding-agent-harness-ai4se.fly.dev>`(由用户执行 `scripts/deploy.sh` 产生)。
+脚本自动完成:本地构建镜像 → 上传到服务器 → 启动容器(映射 80→8000,mock 模式无需 key)。
+
+### 阿里云容器镜像服务(ACR,可选)
+
+如果要在多台机器间分发或走 CI/CD,可以将镜像推送到 ACR:
+```bash
+# 登录 ACR
+docker login --username=<阿里云账号> registry.cn-hangzhou.aliyuncs.com
+# 打标签 + 推送
+docker tag coding-agent-harness registry.cn-hangzhou.aliyuncs.com/<命名空间>/coding-agent-harness:latest
+docker push registry.cn-hangzhou.aliyuncs.com/<命名空间>/coding-agent-harness:latest
+```
+
+- CI/CD:`unit-test` job 每次 push/PR 跑测试(§4.8);`build-image` job 在 main 构建推送镜像。
+- **线上部署 URL**:`http://<你的服务器公网 IP>`(部署后填入)。
 
 ## 目录结构
 
@@ -139,7 +165,7 @@ uv run pytest tests/demo/ -v
 ## 已知限制
 
 - **本地 docker daemon**:Mac 需启动 Docker Desktop GUI 才能本地 `docker build`;未启动时镜像构建由 CI `build-image` job(GitLab runner docker:dind)完成。
-- **§五.9 线上 URL**:需用户在 Fly.io 注册账号 + `flyctl auth login` 后执行 `scripts/deploy.sh` 产生公网 URL,AI 无法代持云账号 token。
+- **§五.9 线上 URL**:需用户在阿里云购买轻量服务器后执行 `scripts/deploy-aliyun.sh` 产生公网 URL,AI 无法代持云账号。
 - **容器内 keychain**:Linux 容器内 macOS Keychain 不可用,`keyring` 无可用后端时不会自动文件回落;真实 LLM 跑建议本地运行,或在容器内显式配 `keyring` 文件后端(`keyrings.alt`)/环境注入。
 - **Windows shlex**:`tools/shell.py` 的 `shell=False` 在 Windows 上对复杂命令解析较弱(Task 7 登记 follow-up;mock 单测不暴露,CI 未跑 Windows 矩阵)。
 - **冷启动样本**:SPEC_PROCESS 冷启动验证仅覆盖 Task 1/2(单人项目,信号量偏低,见 SPEC_PROCESS §5.5)。
