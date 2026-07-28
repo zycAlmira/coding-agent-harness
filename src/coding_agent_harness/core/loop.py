@@ -97,9 +97,10 @@ class AgentLoop:
             "你是一个 coding agent。可用工具:read_file/write_file/delete_file/list_dir/run_shell/run_tests/stop。"
             "每次输出一个工具调用并附 intent(一句话说明动机)。"
             "\n重要规则:"
-            "\n- 修复实现代码(src),不要修改测试文件。测试断言是真理,实现代码必须迁就测试。"
-            "\n- 先读代码理解问题,再动手修改,最后跑测试验证。"
-            "\n- 测试通过后,先输出一段文字总结(不调用任何工具),再调用 stop。"
+            "\n- 【代码修改任务】先读代码理解问题→动手修改→跑测试验证→文字总结→stop。测试断言是真理,实现代码必须迁就测试,不要修改测试文件。"
+            "\n- 【非代码任务】如用户只是问问题、查看文件、解释概念、浏览项目,直接用文字回复,不需要运行测试。完成回复后调用 stop。"
+            "\n- 判断标准:用户要求改代码/修 bug/加功能时才需要测试;只问问题/查看/了解信息时不要测试。"
+            "\n- 工作完成后,先输出一段文字总结(不调用任何工具),再调用 stop。"
             "\n  例如:测试全部通过。修改内容:把 add 的返回值从 a+b 改为 a+b+1,使得 add(2,2)=5 符合测试断言。"
             "\n- 可以随时用文字回答问题或说明当前进展(不调用工具即可)。"
             + ("\n项目约定:\n" + "\n".join(convs) if convs else "")
@@ -195,11 +196,14 @@ class AgentLoop:
                 "intent": p.get("intent", ""),
             }
 
-    def run(self, task: str, ts_provider: Callable[[], str]) -> RunResult:
+    def run(self, task: str, ts_provider: Callable[[], str], prior_history: list[Message] | None = None) -> RunResult:
         state = LoopState()
         steps: list[Step] = []
         outcome = "error"
         final_fb = None
+        # 多轮对话:从先前对话恢复上下文,使 agent 能基于历史继续。
+        if prior_history:
+            self.conversation_history = list(prior_history)
         while True:
             state.rounds += 1
             msgs = self._build_messages(task, state)

@@ -12,163 +12,264 @@
       --border: #e5e7eb; --hover: #f3f4f6;
     }
     * { box-sizing:border-box; margin:0; padding:0; }
-    body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif; font-size:14px; display:flex; flex-direction:column; height:100vh; }
+    body {
+      margin:0; background:var(--bg); color:var(--text);
+      font-family:system-ui,-apple-system,sans-serif; font-size:14px;
+      display:flex; flex-direction:column; height:100vh;
+    }
 
     /* ── 顶栏 ── */
-    #topbar { display:flex; gap:8px; align-items:center; padding:8px 12px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
-    #topbar input[type=text] { flex:1; padding:7px 10px; border-radius:6px; border:1px solid #d1d5db; background:#fff; color:var(--text); font-size:13px; min-width:120px; }
-    #topbar button { padding:7px 12px; border:0; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; font-size:13px; white-space:nowrap; }
+    #topbar {
+      display:flex; gap:8px; align-items:center; padding:8px 12px;
+      background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0;
+    }
+    #topbar .sep { width:1px; height:24px; background:var(--border); }
+    #topbar select, #topbar input[type=text] {
+      padding:6px 8px; border-radius:6px; border:1px solid #d1d5db;
+      background:#fff; color:var(--text); font-size:12px;
+    }
+    #topbar button {
+      padding:7px 12px; border:0; border-radius:6px; background:var(--accent);
+      color:#fff; cursor:pointer; font-size:13px; white-space:nowrap;
+    }
     #topbar button:hover { filter:brightness(1.1); }
     #topbar button.ghost { background:#e5e7eb; color:var(--text); }
-    #topbar button.deny { background:var(--danger); }
-    #topbar select, #topbar .ctrl { padding:6px 8px; border-radius:6px; border:1px solid #d1d5db; background:#fff; color:var(--text); font-size:12px; }
-    #topbar .sep { width:1px; height:24px; background:var(--border); }
-    #topbar .badge { font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600; }
+    #topbar .badge {
+      font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600;
+    }
     .badge-mock { background:#e5e7eb; color:#6b7280; }
     .badge-real { background:#dcfce7; color:var(--success); }
 
-    /* ── 主体三栏 ── */
+    /* ── 主体 ── */
     #main { display:flex; flex:1; overflow:hidden; }
 
     /* 侧栏 */
-    #sidebar { width:260px; min-width:220px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; transition:width .2s; }
-    #sidebar.collapsed { width:0; min-width:0; border:none; }
+    #sidebar {
+      width:260px; min-width:220px; background:var(--surface);
+      border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden;
+    }
     #sidebar .tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
-    #sidebar .tabs button { flex:1; padding:8px; border:0; background:none; cursor:pointer; font-size:12px; font-weight:600; color:var(--text2); border-bottom:2px solid transparent; }
+    #sidebar .tabs button {
+      flex:1; padding:8px; border:0; background:none; cursor:pointer;
+      font-size:12px; font-weight:600; color:var(--text2); border-bottom:2px solid transparent;
+    }
     #sidebar .tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
     #sidebar .pane { flex:1; overflow-y:auto; padding:8px; display:none; }
-    #sidebar .pane.active { display:block; }
+    #sidebar .pane.active { display:flex; flex-direction:column; }
 
-    /* 历史列表项 */
-    .hist-item { padding:8px; border-radius:6px; cursor:pointer; margin-bottom:4px; border:1px solid transparent; font-size:12px; }
+    /* 历史列表 */
+    .hist-item {
+      padding:8px; border-radius:6px; cursor:pointer; margin-bottom:4px;
+      border:1px solid transparent; font-size:12px; position:relative;
+    }
     .hist-item:hover { background:var(--hover); }
-    .hist-item .hi-outcome { font-size:11px; padding:1px 6px; border-radius:4px; }
-    .hi-stopped { background:#dcfce7; color:var(--success); }
-    .hi-error { background:#fee2e2; color:var(--danger); }
-    .hi-stuck { background:#fef3c7; color:var(--warn); }
-    .hi-max_rounds { background:#fef3c7; color:var(--warn); }
+    .hist-item.active { border-color:var(--accent); background:#eff6ff; }
+    .hist-item .hi-title { font-weight:600; margin-bottom:2px; }
+    .hist-item .hi-meta { font-size:11px; color:var(--text2); }
+    .hist-item .hi-del {
+      position:absolute; right:6px; top:6px; opacity:0;
+      cursor:pointer; color:var(--danger); font-size:14px;
+    }
+    .hist-item:hover .hi-del { opacity:1; }
 
     /* 文件树 */
-    .ft-item { padding:3px 6px; cursor:pointer; border-radius:4px; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ft-item {
+      padding:3px 6px; cursor:pointer; border-radius:4px; font-size:12px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
     .ft-item:hover { background:var(--hover); }
-    .ft-dir { font-weight:600; }
     .ft-file { padding-left:20px; color:var(--text2); }
     .ft-toggle { cursor:pointer; user-select:none; width:14px; display:inline-block; text-align:center; }
 
-    /* 中间时间线 */
-    #timeline { flex:1; overflow-y:auto; padding:12px; }
-    #timeline .empty-state { text-align:center; color:var(--text2); margin-top:60px; }
-    #timeline .empty-state .icon { font-size:48px; margin-bottom:12px; }
+    /* ── 聊天区域 ── */
+    #chat {
+      flex:1; display:flex; flex-direction:column; min-width:0; background:#fafafa;
+    }
+    #chat-messages {
+      flex:1; overflow-y:auto; padding:16px;
+    }
 
-    /* 步骤卡片 */
-    .step-card { background:var(--surface); border-radius:var(--radius); margin-bottom:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04); overflow:hidden; }
-    .step-card .sc-header { display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; user-select:none; }
-    .step-card .sc-header:hover { background:var(--hover); }
-    .step-card .sc-icon { font-size:18px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:#f3f4f6; flex-shrink:0; }
-    .step-card .sc-action { font-weight:600; font-size:13px; }
-    .step-card .sc-intent { color:var(--text2); font-size:12px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .step-card .sc-round { font-size:11px; color:var(--text2); background:#f9fafb; padding:2px 6px; border-radius:4px; }
-    .step-card .sc-body { display:none; padding:0 12px 12px 48px; font-size:12px; }
-    .step-card.expanded .sc-body { display:block; }
-    .step-card .sc-body pre { background:#f9fafb; border:1px solid var(--border); border-radius:4px; padding:8px; overflow-x:auto; font-size:11px; max-height:200px; overflow-y:auto; }
-    .step-card .sc-body .kv { margin:4px 0; }
-    .step-card .sc-body .kv k { color:var(--text2); font-weight:600; }
-    .step-card .sc-body .kv v { word-break:break-all; }
+    /* 用户气泡 */
+    .msg-user {
+      display:flex; justify-content:flex-end; margin-bottom:12px;
+    }
+    .msg-user .bubble {
+      max-width:70%; background:var(--accent); color:#fff;
+      padding:10px 14px; border-radius:16px 16px 4px 16px;
+      font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-word;
+      box-shadow:0 1px 3px rgba(0,0,0,0.1);
+    }
 
-    /* 卡片颜色 */
-    .sc-respond { border-left:3px solid var(--purple); }
-    .sc-pass { border-left:3px solid var(--success); }
-    .sc-deny { border-left:3px solid var(--danger); }
-    .sc-approval { border-left:3px solid var(--warn); }
-    .sc-normal { border-left:3px solid var(--accent); }
-    .sc-error { border-left:3px solid var(--danger); }
+    /* agent 回复气泡 */
+    .msg-agent {
+      display:flex; justify-content:flex-start; margin-bottom:4px;
+    }
+    .msg-agent .avatar {
+      width:28px; height:28px; border-radius:50%; background:#f3f4f6;
+      display:flex; align-items:center; justify-content:center;
+      font-size:14px; margin-right:8px; flex-shrink:0;
+    }
+    .msg-agent .bubble {
+      max-width:75%; background:#f5f3ff; border:1px solid #e9d5ff;
+      padding:10px 14px; border-radius:4px 16px 16px 16px;
+      font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-word;
+      color:var(--text);
+    }
+    .msg-agent .bubble.streaming::after {
+      content:'▊'; animation:blink .8s infinite; color:var(--purple);
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-    /* agent 回复卡片(特殊样式) */
-    .resp-card { background:var(--surface); border-left:3px solid var(--purple); border-radius:var(--radius); margin-bottom:8px; padding:12px; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
-    .resp-card .resp-label { font-size:11px; color:var(--purple); font-weight:600; margin-bottom:4px; }
-    .resp-card .resp-text { font-size:13px; white-space:pre-wrap; line-height:1.5; }
+    /* 工具步骤卡片(嵌在聊天流中) */
+    .tool-steps {
+      margin:4px 0 12px 36px; /* 与 agent 气泡左对齐 */
+    }
+    .step-mini {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:5px 10px; border-radius:20px; background:var(--surface);
+      border:1px solid var(--border); font-size:12px; cursor:pointer;
+      margin-right:6px; margin-bottom:4px;
+    }
+    .step-mini:hover { background:var(--hover); }
+    .step-mini .si-icon { font-size:14px; }
+    .step-mini .si-name { font-weight:600; }
+    .step-mini .si-intent { color:var(--text2); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .step-mini.pass { border-color:var(--success); background:#f0fdf4; }
+    .step-mini.deny { border-color:var(--danger); background:#fef2f2; }
+    .step-detail {
+      display:none; padding:8px; margin-top:4px; border-radius:6px;
+      background:var(--surface); border:1px solid var(--border); font-size:12px;
+    }
+    .step-detail.open { display:block; }
+    .step-detail pre {
+      background:#f9fafb; border-radius:4px; padding:6px; overflow-x:auto;
+      font-size:11px; max-height:160px; overflow-y:auto; margin-top:4px;
+    }
+    .step-detail .kv { margin:2px 0; }
+    .step-detail .kv k { color:var(--text2); font-weight:600; }
 
-    /* 右面板 */
-    #panel { width:280px; min-width:240px; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; padding:12px; }
-    #panel h4 { font-size:12px; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin:12px 0 4px; }
+    /* 审批按钮 */
+    .approval-inline {
+      margin:4px 0 12px 36px; padding:8px 12px;
+      background:#fffbeb; border:1px solid #fcd34d; border-radius:8px;
+    }
+    .approval-inline .btns { margin-top:6px; }
+    .approval-inline button { margin-right:6px; }
+
+    /* ── 输入区 ── */
+    #chat-input {
+      padding:12px 16px; background:var(--surface); border-top:1px solid var(--border);
+      display:flex; gap:8px; align-items:center;
+    }
+    #chat-input textarea {
+      flex:1; padding:10px 12px; border-radius:8px; border:1px solid #d1d5db;
+      background:#fff; color:var(--text); font-size:13px; resize:none;
+      font-family:inherit; min-height:40px; max-height:120px;
+    }
+    #chat-input textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(37,99,235,.15); }
+    #btnNewSession { font-size:12px; padding:6px 10px; }
+
+    /* ── 右面板 ── */
+    #panel {
+      width:240px; min-width:200px; background:var(--surface);
+      border-left:1px solid var(--border); overflow-y:auto; padding:12px;
+    }
+    #panel h4 {
+      font-size:11px; color:var(--text2); text-transform:uppercase;
+      letter-spacing:.5px; margin:10px 0 4px;
+    }
     #panel h4:first-child { margin-top:0; }
-    #panel .stat { display:flex; justify-content:space-between; padding:4px 0; font-size:13px; border-bottom:1px solid #f3f4f6; }
+    #panel .stat {
+      display:flex; justify-content:space-between; padding:3px 0;
+      font-size:12px; border-bottom:1px solid #f9fafb;
+    }
     #panel .stat .sv { font-weight:600; }
     #panel .stat .sv.ok { color:var(--success); }
     #panel .stat .sv.bad { color:var(--danger); }
-    #panel .stat .sv.warn { color:var(--warn); }
-    #panel .mini-bar { height:4px; border-radius:2px; background:var(--border); margin:4px 0; overflow:hidden; }
-    #panel .mini-bar .fill { height:100%; border-radius:2px; transition:width .3s; }
-    .fill-success { background:var(--success); }
-    .fill-warn { background:var(--warn); }
-    .fill-accent { background:var(--accent); }
 
     /* 凭据弹窗 */
-    .modal { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:center; justify-content:center; z-index:1000; }
+    .modal {
+      position:fixed; inset:0; background:rgba(0,0,0,0.4);
+      display:none; align-items:center; justify-content:center; z-index:1000;
+    }
     .modal.show { display:flex; }
-    .modal form { background:var(--surface); padding:20px; border-radius:8px; display:grid; gap:8px; width:380px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
-    .modal input, .modal select { padding:8px; border-radius:6px; border:1px solid #d1d5db; background:#fff; color:var(--text); }
+    .modal form {
+      background:var(--surface); padding:20px; border-radius:8px;
+      display:grid; gap:8px; width:380px; box-shadow:0 4px 12px rgba(0,0,0,0.1);
+    }
+    .modal input { padding:8px; border-radius:6px; border:1px solid #d1d5db; background:#fff; color:var(--text); }
     .modal .row { display:flex; gap:8px; }
     .modal .row button { flex:1; }
 
+    /* 空状态 */
+    .empty-chat {
+      text-align:center; color:var(--text2); margin-top:80px;
+    }
+    .empty-chat .icon { font-size:56px; margin-bottom:12px; }
+
     /* 响应式 */
     @media (max-width:900px) {
-      #sidebar { width:0; min-width:0; border:none; }
-      #panel { width:0; min-width:0; display:none; }
+      #sidebar { display:none; }
+      #panel { display:none; }
     }
   </style>
 </head>
 <body>
   <!-- ═══ 顶栏 ═══ -->
   <div id="topbar">
-    <input id="taskInput" type="text" placeholder="描述任务…" onkeydown="if(event.key==='Enter')start()" />
-    <button onclick="start()" id="btnStart">▶ 开始</button>
+    <button class="ghost" id="btnNewSession" onclick="newSession()" title="新会话">＋ 新会话</button>
     <span class="sep"></span>
-    <select id="modelSelect" onchange="switchModel(this.value)" title="切换模型"></select>
-    <span class="sep"></span>
-    <input id="wsInput" type="text" title="工作区路径" style="flex:0 0 auto;width:160px;" onchange="switchWorkspace(this.value)" />
-    <button class="ghost" onclick="browseWs()" title="浏览工作区">📁</button>
+    <select id="modelSelect" onchange="switchModel(this.value)" title="模型"></select>
+    <input id="wsInput" type="text" title="工作区" style="width:130px;" onchange="switchWorkspace(this.value)" />
     <span class="sep"></span>
     <span id="modeBadge" class="badge">mock</span>
     <button class="ghost" style="font-size:11px;" onclick="toggleMode()" title="切换 mock/real">⇄</button>
     <button class="ghost" onclick="openCreds()">🔑</button>
-    <button class="ghost" style="font-size:11px;" onclick="toggleSidebar()" title="折叠侧栏">☰</button>
   </div>
 
   <!-- ═══ 主体 ═══ -->
   <div id="main">
-    <!-- 侧栏:历史 + 文件 -->
+    <!-- 侧栏: 历史 + 文件 -->
     <div id="sidebar">
       <div class="tabs">
-        <button onclick="switchTab('history')" class="active" id="tabHist">📋 历史</button>
-        <button onclick="switchTab('files')" id="tabFiles">📂 文件</button>
+        <button class="active" id="tabHist" onclick="switchTab('history')">📋 历史</button>
+        <button id="tabFiles" onclick="switchTab('files')">📂 文件</button>
       </div>
       <div class="pane active" id="paneHistory"></div>
       <div class="pane" id="paneFiles"></div>
     </div>
 
-    <!-- 时间线 -->
-    <div id="timeline">
-      <div class="empty-state">
-        <div class="icon">🤖</div>
-        <div>输入任务并点击「开始」</div>
+    <!-- 聊天区 -->
+    <div id="chat">
+      <div id="chat-messages">
+        <div class="empty-chat" id="emptyChat">
+          <div class="icon">🤖</div>
+          <div>输入任务开始对话</div>
+          <div style="font-size:12px;margin-top:4px;">agent 会读取代码、运行测试、回复你的问题</div>
+        </div>
+      </div>
+      <div id="chat-input">
+        <textarea id="msgInput" rows="1" placeholder="输入指令… (Enter 发送, Shift+Enter 换行)"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"
+          oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';"></textarea>
+        <button onclick="sendMessage()" id="btnSend">发送</button>
       </div>
     </div>
 
     <!-- 状态面板 -->
     <div id="panel">
-      <h4>📊 实时状态</h4>
-      <div id="panelContent">
-        <div class="stat"><span>状态</span><span class="sv" id="stStatus">空闲</span></div>
-        <div class="stat"><span>轮次</span><span class="sv" id="stRound">—</span></div>
-        <div class="stat"><span>最后动作</span><span class="sv" id="stAction">—</span></div>
-        <div class="stat"><span>测试结果</span><span class="sv" id="stFeedback">—</span></div>
-        <div class="stat"><span>模式</span><span class="sv" id="stMode">mock</span></div>
-        <div class="stat"><span>模型</span><span class="sv" id="stModel">—</span></div>
-        <div class="stat"><span>护栏拦截</span><span class="sv" id="stDeny">0</span></div>
-        <div class="stat"><span>审批次数</span><span class="sv" id="stApprove">0</span></div>
-        <div class="mini-bar"><div class="fill fill-success" id="progBar" style="width:0%"></div></div>
-      </div>
+      <h4>📊 当前会话</h4>
+      <div class="stat"><span>状态</span><span class="sv" id="stStatus">空闲</span></div>
+      <div class="stat"><span>轮次</span><span class="sv" id="stRound">—</span></div>
+      <div class="stat"><span>对话轮</span><span class="sv" id="stTurns">—</span></div>
+      <div class="stat"><span>最后动作</span><span class="sv" id="stAction">—</span></div>
+      <div class="stat"><span>测试结果</span><span class="sv" id="stFeedback">—</span></div>
+      <div class="stat"><span>模式</span><span class="sv" id="stMode">mock</span></div>
+      <div class="stat"><span>模型</span><span class="sv" id="stModel">—</span></div>
+      <h4>🔢 计数</h4>
+      <div class="stat"><span>护栏拦截</span><span class="sv" id="stDeny">0</span></div>
+      <div class="stat"><span>审批次数</span><span class="sv" id="stApprove">0</span></div>
+      <div class="stat"><span>工具调用</span><span class="sv" id="stTools">0</span></div>
     </div>
   </div>
 
@@ -189,8 +290,11 @@
 
   <script>
     // ═══════ 全局状态 ═══════
-    let es, currentTaskId = null, roundCount = 0, denyCount = 0, approveCount = 0;
-    let lastFeedbackStatus = null, typingTimer = null;
+    let es, currentConvId = null;
+    let roundCount = 0, denyCount = 0, approveCount = 0, toolCount = 0;
+    let turnCount = 0;
+    let typingTimer = null;
+    let pendingSteps = [];  // 当前 agent 轮累积的步骤
 
     // ═══════ 初始化 ═══════
     document.addEventListener('DOMContentLoaded', () => {
@@ -199,197 +303,341 @@
       loadFileTree();
     });
 
-    // ═══════ 任务控制 ═══════
-    function start() {
-      const task = document.getElementById('taskInput').value || '(空任务)';
-      const ws = document.getElementById('wsInput').value;
+    // ═══════ 发送消息 ═══════
+    function sendMessage() {
+      const input = document.getElementById('msgInput');
+      const task = input.value.trim();
+      if (!task) return;
       if (es) { es.close(); es = null; }
-      // 停止打字动画
+
+      // 停止上次的打字动画
       if (typingTimer) { clearInterval(typingTimer); typingTimer = null; }
 
-      fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({task, workspace: ws || undefined})})
+      // 移除空状态
+      const empty = document.getElementById('emptyChat');
+      if (empty) empty.style.display = 'none';
+
+      // 渲染用户气泡
+      appendUserBubble(task);
+
+      // 重置统计
+      roundCount = 0; denyCount = 0; approveCount = 0; toolCount = 0;
+      pendingSteps = [];
+      resetPanel();
+      updateStat('stStatus', '运行中…');
+
+      input.value = '';
+      input.style.height = 'auto';
+      document.getElementById('btnSend').disabled = true;
+
+      const body = { task };
+      if (currentConvId) body.conversation_id = currentConvId;
+
+      fetch('/api/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
         .then(r => r.json()).then(d => {
-          currentTaskId = d.task_id;
-          document.getElementById('timeline').innerHTML = '';
-          roundCount = 0; denyCount = 0; approveCount = 0; lastFeedbackStatus = null;
-          resetPanel();
-          updateStat('stStatus', '运行中…');
-          updateStat('stRound', '0');
-          updateStat('stAction', '启动中…');
-          es = new EventSource(`/api/tasks/${d.task_id}/events`);
-          es.onmessage = ev => render(JSON.parse(ev.data));
-          es.onerror = () => { updateStat('stStatus', '断开'); };
+          currentConvId = d.conversation_id || d.task_id;
+          turnCount++;
+          updateStat('stTurns', turnCount);
+          es = new EventSource(`/api/tasks/${currentConvId}/events`);
+          es.onmessage = ev => handleEvent(JSON.parse(ev.data));
+          es.onerror = () => {
+            updateStat('stStatus', '连接断开');
+            document.getElementById('btnSend').disabled = false;
+          };
+        }).catch(e => {
+          updateStat('stStatus', '请求失败');
+          document.getElementById('btnSend').disabled = false;
         });
     }
 
-    // ═══════ 事件渲染 ═══════
-    function render(e) {
-      const tl = document.getElementById('timeline');
-      // 移除空状态
-      const empty = tl.querySelector('.empty-state');
-      if (empty) empty.remove();
+    // ═══════ 事件处理 ═══════
+    function handleEvent(e) {
+      const chat = document.getElementById('chat-messages');
 
       if (e.type === 'loop_stopped') {
-        const oc = e.outcome || 'stopped';
-        const cls = oc === 'stopped' ? 'sc-pass' : 'sc-error';
-        const labels = {stopped:'✅ 任务完成', stuck:'⚠️ 陷入僵局', max_rounds:'⏱️ 达到最大轮次', error:'❌ 异常终止'};
-        tl.innerHTML += `<div class="step-card ${cls}"><div class="sc-header"><span class="sc-icon">🏁</span><span class="sc-action">${labels[oc]||oc}</span></div></div>`;
-        updateStat('stStatus', oc === 'stopped' ? '完成' : '终止');
-        updateStat('stAction', labels[oc]||oc);
+        // 把之前累积的步骤渲染出来
+        if (pendingSteps.length > 0) {
+          appendToolSteps(pendingSteps);
+          pendingSteps = [];
+        }
         if (es) es.close();
+        document.getElementById('btnSend').disabled = false;
+        updateStat('stStatus', e.outcome === 'stopped' ? '完成' : '终止');
         loadHistory(); // 刷新历史列表
         return;
       }
+
       if (e.type === 'error') {
-        tl.innerHTML += `<div class="step-card sc-error"><div class="sc-header"><span class="sc-icon">❌</span><span class="sc-action">错误</span></div><div class="sc-body"><pre>${esc(e.msg||'')}</pre></div></div>`;
+        appendError(e.msg || '未知错误');
         updateStat('stStatus', '错误');
+        if (es) es.close();
+        document.getElementById('btnSend').disabled = false;
         return;
       }
+
       if (e.type === 'pending_approval') {
         approveCount++;
         updateStat('stApprove', approveCount);
-        tl.innerHTML += `<div class="step-card sc-approval expanded" id="approval-${e.approval_id}"><div class="sc-header"><span class="sc-icon">⚠️</span><span class="sc-action">需审批</span><span class="sc-intent">${esc(e.reason||'')}</span></div><div class="sc-body"><div class="kv"><k>intent</k><v>${esc(e.intent||'')}</v></div><div style="margin-top:8px"><button onclick="approve('${e.approval_id}',true)">✅ 通过</button> <button class="deny" onclick="approve('${e.approval_id}',false)">❌ 拒绝</button></div></div></div>`;
-        tl.scrollTop = tl.scrollHeight;
+        appendApproval(e);
         return;
       }
+
       if (e.type === 'response') {
-        // W8: 打字机效果渲染 agent 回复
-        const id = 'resp-' + Date.now();
-        tl.innerHTML += `<div class="resp-card" id="${id}"><div class="resp-label">💬 agent 回复</div><div class="resp-text" id="${id}-text"></div></div>`;
-        typeText(`${id}-text`, e.text || '');
-        tl.scrollTop = tl.scrollHeight;
+        // agent 文本回复:独立气泡,打字机流式渲染
+        // 先把之前的步骤渲染出来
+        if (pendingSteps.length > 0) {
+          appendToolSteps(pendingSteps);
+          pendingSteps = [];
+        }
+        appendAgentBubble(e.text || '');
         updateStat('stAction', '💬 回复');
         return;
       }
 
-      // 步骤卡片
+      // 工具调用/护栏判定 → 加入待渲染步骤
       roundCount++;
+      toolCount++;
       updateStat('stRound', roundCount);
+      updateStat('stTools', toolCount);
 
       const actionName = e.type || '?';
       const icon = ACTION_ICONS[actionName] || '🔧';
-      const intent = e.intent || '';
       const verdict = e.verdict || '';
       const fb = e.feedback;
 
-      let cardClass = 'sc-normal';
-      if (verdict === 'Deny') { cardClass = 'sc-deny'; denyCount++; updateStat('stDeny', denyCount); }
-      else if (verdict === 'NeedsApproval') cardClass = 'sc-approval';
-      else if (fb && fb.status === 'PASS') cardClass = 'sc-pass';
+      let stepClass = '';
+      if (verdict === 'Deny') { stepClass = 'deny'; denyCount++; updateStat('stDeny', denyCount); }
+      else if (fb && fb.status === 'PASS') stepClass = 'pass';
 
       updateStat('stAction', icon + ' ' + actionName);
       if (fb) {
-        lastFeedbackStatus = fb.status;
-        updateStat('stFeedback', fb.status === 'PASS' ? '✅ PASS' : `❌ ${fb.failed||0} 失败`);
+        updateStat('stFeedback', fb.status === 'PASS' ? '✅ PASS' : `❌ ${fb.failed||0}`);
         document.getElementById('stFeedback').className = 'sv ' + (fb.status === 'PASS' ? 'ok' : 'bad');
-        updateStat('progBar', '');
-        document.getElementById('progBar').style.width = fb.status === 'PASS' ? '100%' : '30%';
-        document.getElementById('progBar').className = 'fill ' + (fb.status === 'PASS' ? 'fill-success' : 'fill-warn');
       }
 
-      const cardId = 'step-' + roundCount;
-      const fbStr = fb ? `<span style="font-size:11px;color:${fb.status==='PASS'?'var(--success)':'var(--danger)'}">${fb.status==='PASS'?'✅':'❌'} ${fb.status} (${fb.passed||0}/${(fb.passed||0)+(fb.failed||0)})</span>` : '';
-
-      tl.innerHTML += `<div class="step-card ${cardClass}" id="${cardId}">
-        <div class="sc-header" onclick="toggleCard('${cardId}')">
-          <span class="sc-icon">${icon}</span>
-          <span class="sc-action">${actionName}</span>
-          ${fbStr}
-          <span class="sc-intent">${esc(intent)}</span>
-          <span class="sc-round">#${roundCount}</span>
-        </div>
-        <div class="sc-body">
-          ${intent ? `<div class="kv"><k>intent</k><v>${esc(intent)}</v></div>` : ''}
-          ${verdict ? `<div class="kv"><k>护栏判定</k><v>${esc(verdict)}</v></div>` : ''}
-          ${e.tool_result !== undefined ? `<div class="kv"><k>结果</k><v>${e.ok ? '✅ 成功' : '❌ 失败'}</v></div>` : ''}
-          ${fb ? `<div class="kv"><k>反馈</k><v>${fb.status} — ${fb.summary||''}</v></div>` : ''}
-        </div>
-      </div>`;
-      tl.scrollTop = tl.scrollHeight;
-    }
-
-    // ═══════ W8: 打字机效果 ═══════
-    function typeText(elementId, text) {
-      const el = document.getElementById(elementId);
-      if (!el) return;
-      let i = 0;
-      el.textContent = '';
-      if (typingTimer) clearInterval(typingTimer);
-      typingTimer = setInterval(() => {
-        if (i < text.length) {
-          el.textContent += text.charAt(i);
-          i++;
-          document.getElementById('timeline').scrollTop = document.getElementById('timeline').scrollHeight;
-        } else {
-          clearInterval(typingTimer);
-          typingTimer = null;
-        }
-      }, 15);
-    }
-
-    // ═══════ 审批 ═══════
-    function approve(aid, decision) {
-      if (!currentTaskId) return;
-      fetch(`/api/tasks/${currentTaskId}/approvals/${aid}`, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision})
-      }).then(r => r.json()).then(() => {
-        const card = document.getElementById('approval-' + aid);
-        if (card) card.style.opacity = '0.5';
+      pendingSteps.push({
+        icon, actionName, intent: e.intent || '',
+        verdict, stepClass,
+        ok: e.ok, fb,
+        id: 'step-' + roundCount + '-' + Date.now(),
       });
     }
 
-    // ═══════ 卡片折叠 ═══════
-    function toggleCard(cardId) {
-      document.getElementById(cardId).classList.toggle('expanded');
+    // ═══════ 渲染函数 ═══════
+    function appendUserBubble(text) {
+      const chat = document.getElementById('chat-messages');
+      chat.innerHTML += `<div class="msg-user"><div class="bubble">${esc(text)}</div></div>`;
+      chat.scrollTop = chat.scrollHeight;
     }
 
-    // ═══════ 侧栏标签切换 ═══════
-    function switchTab(tab) {
-      document.querySelectorAll('#sidebar .tabs button').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('#sidebar .pane').forEach(p => p.classList.remove('active'));
-      document.getElementById('tab' + (tab==='history'?'Hist':'Files')).classList.add('active');
-      document.getElementById('pane' + (tab==='history'?'History':'Files')).classList.add('active');
-      if (tab === 'files') loadFileTree();
+    function appendAgentBubble(text) {
+      const chat = document.getElementById('chat-messages');
+      const id = 'ab-' + Date.now();
+      chat.innerHTML += `<div class="msg-agent" id="${id}">
+        <div class="avatar">🤖</div>
+        <div class="bubble streaming" id="${id}-text"></div>
+      </div>`;
+      chat.scrollTop = chat.scrollHeight;
+      typeText(id + '-text', text, () => {
+        // 动画完成后移除 streaming 光标
+        const el = document.getElementById(id + '-text');
+        if (el) el.classList.remove('streaming');
+      });
     }
 
-    function toggleSidebar() {
-      document.getElementById('sidebar').classList.toggle('collapsed');
+    function appendToolSteps(steps) {
+      if (!steps.length) return;
+      const chat = document.getElementById('chat-messages');
+      let html = '<div class="tool-steps">';
+      for (const s of steps) {
+        html += `<span class="step-mini ${s.stepClass}" onclick="toggleStepDetail('${s.id}')" title="${esc(s.intent)}">
+          <span class="si-icon">${s.icon}</span>
+          <span class="si-name">${s.actionName}</span>
+          ${s.stepClass === 'pass' ? '<span style="color:var(--success)">✅</span>' : ''}
+          ${s.stepClass === 'deny' ? '<span style="color:var(--danger)">🚫</span>' : ''}
+        </span>`;
+        // 详情面板
+        html += `<div class="step-detail" id="${s.id}-detail">
+          ${s.intent ? `<div class="kv"><k>intent</k> ${esc(s.intent)}</div>` : ''}
+          ${s.verdict ? `<div class="kv"><k>护栏</k> ${esc(s.verdict)}</div>` : ''}
+          ${s.fb ? `<div class="kv"><k>反馈</k> ${s.fb.status} — ${esc(s.fb.summary||'')}</div>` : ''}
+        </div>`;
+      }
+      html += '</div>';
+      chat.innerHTML += html;
+      chat.scrollTop = chat.scrollHeight;
     }
 
-    // ═══════ 历史列表 ═══════
+    function appendError(msg) {
+      const chat = document.getElementById('chat-messages');
+      chat.innerHTML += `<div class="msg-agent">
+        <div class="avatar">❌</div>
+        <div class="bubble" style="background:#fef2f2;border-color:#fecaca;color:var(--danger)">${esc(msg)}</div>
+      </div>`;
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function appendApproval(e) {
+      const chat = document.getElementById('chat-messages');
+      // 先把待渲染步骤输出
+      if (pendingSteps.length > 0) {
+        appendToolSteps(pendingSteps);
+        pendingSteps = [];
+      }
+      const id = 'appr-' + e.approval_id;
+      chat.innerHTML += `<div class="approval-inline" id="${id}">
+        <div style="font-weight:600">⚠️ 需要审批</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px;">${esc(e.reason||'')}</div>
+        <div style="font-size:12px;color:var(--text2)">intent: ${esc(e.intent||'')}</div>
+        <div class="btns">
+          <button onclick="approve('${e.approval_id}',true)">✅ 通过</button>
+          <button class="ghost" style="background:var(--danger);color:#fff" onclick="approve('${e.approval_id}',false)">❌ 拒绝</button>
+        </div>
+      </div>`;
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function approve(aid, decision) {
+      if (!currentConvId) return;
+      fetch(`/api/tasks/${currentConvId}/approvals/${aid}`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision})
+      }).then(() => {
+        const el = document.getElementById('appr-' + aid);
+        if (el) el.style.opacity = '0.4';
+      });
+    }
+
+    // ═══════ 新会话 ═══════
+    function newSession() {
+      if (es) { es.close(); es = null; }
+      if (typingTimer) { clearInterval(typingTimer); typingTimer = null; }
+      currentConvId = null;
+      roundCount = 0; denyCount = 0; approveCount = 0; toolCount = 0; turnCount = 0;
+      pendingSteps = [];
+      const chat = document.getElementById('chat-messages');
+      chat.innerHTML = `<div class="empty-chat" id="emptyChat">
+        <div class="icon">🤖</div>
+        <div>输入任务开始对话</div>
+        <div style="font-size:12px;margin-top:4px;">agent 会读取代码、运行测试、回复你的问题</div>
+      </div>`;
+      resetPanel();
+      document.getElementById('btnSend').disabled = false;
+      document.getElementById('msgInput').focus();
+      loadHistory();
+    }
+
+    // ═══════ 侧栏: 历史 ═══════
     function loadHistory() {
-      fetch('/api/tasks').then(r => r.json()).then(d => {
+      fetch('/api/conversations').then(r => r.json()).then(d => {
         const pane = document.getElementById('paneHistory');
-        if (!d.tasks || !d.tasks.length) {
+        if (!d.conversations || !d.conversations.length) {
           pane.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:8px">暂无历史</div>';
           return;
         }
-        pane.innerHTML = d.tasks.map(t => {
-          const ts = t.timestamp ? new Date(t.timestamp).toLocaleTimeString() : '';
-          return `<div class="hist-item" onclick="viewHistory('${t.task_id}')" title="${esc(t.task)}">
-            <div style="font-weight:600">${esc(t.task).substring(0,40)}${t.task.length>40?'…':''}</div>
-            <div style="display:flex;justify-content:space-between;margin-top:4px">
-              <span class="hi-outcome hi-${t.outcome}">${t.outcome}</span>
-              <span style="font-size:11px;color:var(--text2)">${t.steps}步 · ${ts}</span>
-            </div>
+        pane.innerHTML = d.conversations.map(c => {
+          const active = c.id === currentConvId ? ' active' : '';
+          const ts = c.updated_at ? new Date(c.updated_at).toLocaleString('zh') : '';
+          return `<div class="hist-item${active}" onclick="loadConversation('${c.id}')" title="${esc(c.title)}">
+            <span class="hi-del" onclick="event.stopPropagation();deleteConv('${c.id}')">×</span>
+            <div class="hi-title">${esc(c.title).substring(0,50)}</div>
+            <div class="hi-meta">${c.turn_count}轮 · ${c.mode} · ${ts}</div>
           </div>`;
         }).join('');
       });
     }
 
-    function viewHistory(taskId) {
-      // 历史回看:展示该任务的事件(从内存 events_log 读)
-      // 注:需要后端支持;当前仅标记。
-      // TODO: 添加 GET /api/tasks/{id}/events-log 端点返回已存 events_log。
-      alert('历史回看功能开发中。当前仅展示摘要。');
+    function loadConversation(convId) {
+      // 切换活跃对话:关闭当前流,清空聊天区,从存储加载历史消息
+      if (es) { es.close(); es = null; }
+      if (typingTimer) { clearInterval(typingTimer); typingTimer = null; }
+      currentConvId = convId;
+      pendingSteps = [];
+      roundCount = 0; denyCount = 0; approveCount = 0; toolCount = 0; turnCount = 0;
+
+      fetch(`/api/conversations/${convId}`).then(r => r.json()).then(conv => {
+        const chat = document.getElementById('chat-messages');
+        const empty = document.getElementById('emptyChat');
+        if (empty) empty.style.display = 'none';
+        chat.innerHTML = '';
+
+        if (!conv.turns || !conv.turns.length) {
+          chat.innerHTML = '<div class="empty-chat"><div class="icon">📭</div><div>空对话</div></div>';
+          return;
+        }
+
+        for (const t of conv.turns) {
+          if (t.role === 'user') {
+            chat.innerHTML += `<div class="msg-user"><div class="bubble">${esc(t.content)}</div></div>`;
+            turnCount++;
+          } else {
+            // agent 回复文本
+            if (t.content) {
+              chat.innerHTML += `<div class="msg-agent">
+                <div class="avatar">🤖</div>
+                <div class="bubble">${esc(t.content)}</div>
+              </div>`;
+            }
+            // 工具步骤
+            if (t.steps && t.steps.length > 0) {
+              const iconSteps = t.steps.filter(s => s.type !== 'response' && s.type !== 'loop_stopped' && s.type !== 'error');
+              if (iconSteps.length > 0) {
+                let html = '<div class="tool-steps">';
+                for (const s of iconSteps) {
+                  const actionName = s.type || '?';
+                  const icon = ACTION_ICONS[actionName] || '🔧';
+                  const fb = s.feedback;
+                  let cls = '';
+                  if (s.verdict === 'Deny') cls = 'deny';
+                  else if (fb && fb.status === 'PASS') cls = 'pass';
+                  html += `<span class="step-mini ${cls}">
+                    <span class="si-icon">${icon}</span>
+                    <span class="si-name">${actionName}</span>
+                    ${cls === 'pass' ? '<span style="color:var(--success)">✅</span>' : ''}
+                  </span>`;
+                }
+                html += '</div>';
+                chat.innerHTML += html;
+              }
+            }
+            // 错误
+            for (const s of (t.steps || [])) {
+              if (s.type === 'error') {
+                chat.innerHTML += `<div class="msg-agent"><div class="avatar">❌</div><div class="bubble" style="background:#fef2f2;border-color:#fecaca;color:var(--danger)">${esc(s.msg||'')}</div></div>`;
+              }
+            }
+          }
+        }
+
+        updateStat('stTurns', turnCount);
+        updateStat('stStatus', '已加载');
+        updateStat('stRound', '—');
+        updateStat('stAction', '—');
+        document.getElementById('btnSend').disabled = false;
+        chat.scrollTop = chat.scrollHeight;
+        loadHistory(); // 刷新高亮
+      });
     }
 
-    // ═══════ 文件树 ═══════
+    function deleteConv(convId) {
+      if (!confirm('删除此对话?')) return;
+      fetch(`/api/conversations/${convId}`, { method:'DELETE' }).then(() => {
+        if (currentConvId === convId) newSession();
+        loadHistory();
+      });
+    }
+
+    // ═══════ 侧栏: 文件 ═══════
+    function switchTab(tab) {
+      document.querySelectorAll('#sidebar .tabs button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('#sidebar .pane').forEach(p => p.classList.remove('active'));
+      document.getElementById(tab === 'history' ? 'tabHist' : 'tabFiles').classList.add('active');
+      document.getElementById(tab === 'history' ? 'paneHistory' : 'paneFiles').classList.add('active');
+      if (tab === 'files') loadFileTree();
+    }
+
     function loadFileTree() {
       fetch('/api/workspace/tree').then(r => r.json()).then(tree => {
         document.getElementById('paneFiles').innerHTML = renderTree(tree, 0);
-      }).catch(() => {
-        document.getElementById('paneFiles').innerHTML = '<div style="color:var(--text2);font-size:12px">加载失败</div>';
       });
     }
 
@@ -398,15 +646,14 @@
         return `<div class="ft-item ft-file" onclick="viewFile('${esc(node.path)}')" title="${esc(node.path)}">📄 ${esc(node.name)}</div>`;
       }
       const id = 'ft-' + node.path.replace(/[^a-zA-Z0-9]/g, '_');
-      const children = node.children;
-      const hasKids = children && children.length > 0;
-      const truncated = node.truncated;
-      let html = `<div class="ft-item ft-dir" onclick="toggleFT('${id}')" style="padding-left:${depth*12}px">
+      const kids = node.children;
+      const hasKids = kids && kids.length > 0;
+      let html = `<div class="ft-item" onclick="toggleFT('${id}')" style="padding-left:${depth*12}px">
         <span class="ft-toggle" id="${id}-tog">${hasKids ? '▼' : '▶'}</span>📁 ${esc(node.name)}</div>`;
       if (hasKids) {
         html += `<div id="${id}-kids" style="display:block">`;
-        for (const c of children) html += renderTree(c, depth + 1);
-        if (truncated) html += `<div class="ft-item" style="padding-left:${(depth+1)*12}px;color:var(--text2)">…截断</div>`;
+        for (const c of kids) html += renderTree(c, depth + 1);
+        if (node.truncated) html += `<div class="ft-item" style="padding-left:${(depth+1)*12}px;color:var(--text2)">…截断</div>`;
         html += '</div>';
       }
       if (node.error) html += `<div class="ft-item" style="color:var(--danger)">${esc(node.error)}</div>`;
@@ -424,22 +671,55 @@
 
     function viewFile(path) {
       fetch('/api/workspace/file?path=' + encodeURIComponent(path)).then(r => r.json()).then(d => {
-        const tl = document.getElementById('timeline');
-        const empty = tl.querySelector('.empty-state');
-        if (empty) empty.remove();
-        const lang = (path.endsWith('.py')||path.endsWith('.js')||path.endsWith('.ts')) ? path.split('.').pop() : '';
-        tl.innerHTML += `<div class="step-card sc-normal expanded" id="fileview-${Date.now()}">
-          <div class="sc-header"><span class="sc-icon">📄</span><span class="sc-action">${esc(path)}</span><span style="font-size:11px;color:var(--text2)">${d.size||0} 字节</span></div>
-          <div class="sc-body"><pre class="language-${lang}">${esc(d.content||'')}</pre></div>
+        const chat = document.getElementById('chat-messages');
+        const empty = document.getElementById('emptyChat');
+        if (empty) empty.style.display = 'none';
+        chat.innerHTML += `<div class="msg-agent">
+          <div class="avatar">📄</div>
+          <div class="bubble" style="max-width:90%">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px">📄 ${esc(path)} (${d.size||0} 字节)</div>
+            <pre style="background:#f9fafb;border-radius:4px;padding:8px;overflow-x:auto;font-size:11px;max-height:300px;overflow-y:auto;margin:0">${esc(d.content||'')}</pre>
+          </div>
         </div>`;
-        tl.scrollTop = tl.scrollHeight;
-      }).catch(e => alert('读取文件失败: ' + e.message));
+        chat.scrollTop = chat.scrollHeight;
+      });
     }
 
-    function browseWs() {
-      switchTab('files');
-      loadFileTree();
+    // ═══════ 工具函数 ═══════
+    function toggleStepDetail(id) {
+      const el = document.getElementById(id + '-detail');
+      if (el) el.classList.toggle('open');
     }
+
+    function typeText(elementId, text, onDone) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      let i = 0;
+      el.textContent = '';
+      el.classList.add('streaming');
+      if (typingTimer) clearInterval(typingTimer);
+      typingTimer = setInterval(() => {
+        if (i < text.length) {
+          el.textContent += text.charAt(i);
+          i++;
+          document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+        } else {
+          clearInterval(typingTimer);
+          typingTimer = null;
+          el.classList.remove('streaming');
+          if (onDone) onDone();
+        }
+      }, 12);
+    }
+
+    function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    const ACTION_ICONS = {
+      'read_file':'📖', 'write_file':'✏️', 'delete_file':'🗑️', 'list_dir':'📂',
+      'run_shell':'⚡', 'run_tests':'🧪', 'stop':'🛑', 'respond':'💬',
+      'ReadFile':'📖', 'WriteFile':'✏️', 'DeleteFile':'🗑️', 'ListDir':'📂',
+      'RunShell':'⚡', 'RunTests':'🧪', 'Stop':'🛑', 'Respond':'💬',
+    };
 
     // ═══════ 配置与模式 ═══════
     function loadConfig() {
@@ -449,8 +729,6 @@
         document.getElementById('wsInput').value = c.workspace || './workspace';
         updateStat('stMode', c.mode);
         updateStat('stModel', c.model || '—');
-
-        // 填充模型下拉
         const sel = document.getElementById('modelSelect');
         sel.innerHTML = '';
         for (const p of (c.models_available || [])) {
@@ -464,7 +742,6 @@
           }
           sel.appendChild(og);
         }
-        // 如果当前模型不在列表中,追加
         if (c.model && ![...sel.options].some(o => o.value === c.model)) {
           const opt = document.createElement('option');
           opt.value = c.model; opt.textContent = '当前: ' + c.model; opt.selected = true;
@@ -475,23 +752,18 @@
 
     function switchModel(model) {
       fetch('/api/config/model', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model})})
-        .then(r => r.json()).then(d => {
-          updateStat('stModel', d.model);
-        });
+        .then(r => r.json()).then(d => updateStat('stModel', d.model));
     }
 
     function switchWorkspace(ws) {
-      fetch('/api/config/workspace', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({workspace: ws})})
-        .then(r => r.json()).then(d => {
-          document.getElementById('wsInput').value = d.workspace;
-          loadFileTree();
-        });
+      fetch('/api/config/workspace', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({workspace:ws})})
+        .then(r => r.json()).then(d => { document.getElementById('wsInput').value = d.workspace; loadFileTree(); });
     }
 
     function toggleMode() {
-      const current = document.getElementById('modeBadge').textContent;
-      const next = current === 'mock' ? 'real' : 'mock';
-      fetch('/api/config/mode', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode: next})})
+      const cur = document.getElementById('modeBadge').textContent;
+      const next = cur === 'mock' ? 'real' : 'mock';
+      fetch('/api/config/mode', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode:next})})
         .then(r => r.json()).then(d => {
           document.getElementById('modeBadge').textContent = d.mode;
           document.getElementById('modeBadge').className = 'badge badge-' + (d.mode === 'mock' ? 'mock' : 'real');
@@ -499,13 +771,12 @@
         });
     }
 
-    // ═══════ 凭据弹窗 ═══════
+    // ═══════ 凭据 ═══════
     function openCreds() {
       document.getElementById('credModal').classList.add('show');
       fetch('/api/credentials/status').then(r=>r.json()).then(d => {
         document.getElementById('credStatus').textContent = d.set ? '✅ 已配置 Keychain' : '⚠️ 未配置';
       });
-      // 预填当前模型
       fetch('/api/config').then(r=>r.json()).then(c => {
         if (c.model && c.model !== '(未配置)') document.getElementById('ck_model').value = c.model;
         if (c.base_url) document.getElementById('ck_url').value = c.base_url;
@@ -522,35 +793,26 @@
         })
       }).then(r=>r.json()).then(() => {
         document.getElementById('credStatus').textContent = '✅ 已保存';
-        loadConfig(); // 刷新模型列表
+        loadConfig();
       });
     }
 
     // ═══════ 状态面板 ═══════
     function resetPanel() {
-      updateStat('stStatus', '运行中…');
-      updateStat('stRound', '0');
+      updateStat('stStatus', '空闲');
+      updateStat('stRound', '—');
+      updateStat('stTurns', '—');
       updateStat('stAction', '—');
       updateStat('stFeedback', '—');
       document.getElementById('stFeedback').className = 'sv';
       updateStat('stDeny', '0');
       updateStat('stApprove', '0');
-      document.getElementById('progBar').style.width = '0%';
+      updateStat('stTools', '0');
     }
     function updateStat(id, val) {
       const el = document.getElementById(id);
       if (el) el.textContent = String(val);
     }
-
-    // ═══════ 工具函数 ═══════
-    function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-    const ACTION_ICONS = {
-      'read_file':'📖', 'write_file':'✏️', 'delete_file':'🗑️', 'list_dir':'📂',
-      'run_shell':'⚡', 'run_tests':'🧪', 'stop':'🛑', 'respond':'💬',
-      'ReadFile':'📖', 'WriteFile':'✏️', 'DeleteFile':'🗑️', 'ListDir':'📂',
-      'RunShell':'⚡', 'RunTests':'🧪', 'Stop':'🛑', 'Respond':'💬',
-    };
   </script>
 </body>
 </html>

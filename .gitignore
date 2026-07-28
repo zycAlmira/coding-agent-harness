@@ -10,5 +10,6 @@ memory/fixes.json
 dist/
 config.yaml
 workspace/
+conversations/
 *.pptx
 *.pdf

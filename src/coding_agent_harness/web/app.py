@@ -1,10 +1,11 @@
-"""FastAPI 单页 WebUI。SSE 推送主循环事件,HITL 审批,凭据管理,任务历史,工作区浏览。"""
+"""FastAPI 单页 WebUI。对话式 SSE 推送,HITL 审批,凭据管理,对话持久化。"""
 from __future__ import annotations
 import asyncio
 import json
 import tempfile
 import threading
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 import yaml
@@ -14,14 +15,17 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from coding_agent_harness.config import Config, load_config
 from coding_agent_harness.core.loop import AgentLoop
+from coding_agent_harness.llm.base import Message
 from coding_agent_harness.llm.mock import MockLLMClient
 from coding_agent_harness.memory.store import Memory
 from coding_agent_harness.creds.keychain import Creds
 
 
+# ── 请求模型 ──
 class TaskReq(BaseModel):
     task: str
-    workspace: str | None = None  # 可选:覆盖默认工作区
+    conversation_id: str | None = None  # 继续已有对话
+    workspace: str | None = None
 
 
 class ApproveReq(BaseModel):
@@ -46,7 +50,33 @@ class ModeSwitchReq(BaseModel):
     mode: str
 
 
-# 常用模型列表(供前端下拉选择)
+# ── 对话数据模型 ──
+@dataclass
+class ConvTurn:
+    """对话中的一轮:用户消息或 agent 执行结果。"""
+    role: str  # "user" | "agent"
+    content: str
+    steps: list[dict] | None = None  # agent 的工具调用步骤
+    outcome: str | None = None       # agent 轮的结局
+    prior_history: list[dict] | None = None  # 序列化的 Message,供下一轮恢复上下文
+    timestamp: str = ""
+
+
+@dataclass
+class Conversation:
+    id: str
+    title: str
+    turns: list[ConvTurn] = field(default_factory=list)
+    workspace: str = "./workspace"
+    mode: str = "mock"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+# 对话持久化目录
+_CONV_DIR = Path("./conversations")
+
+# 已知模型列表
 _KNOWN_MODELS = [
     {"provider": "DeepSeek", "models": ["deepseek-chat", "deepseek-coder"]},
     {"provider": "OpenAI", "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]},
@@ -56,8 +86,83 @@ _KNOWN_MODELS = [
 ]
 
 
+def _conv_path(conv_id: str) -> Path:
+    return _CONV_DIR / f"{conv_id}.json"
+
+
+def _save_conv(conv: Conversation) -> None:
+    _CONV_DIR.mkdir(parents=True, exist_ok=True)
+    data = {
+        "id": conv.id,
+        "title": conv.title,
+        "turns": [
+            {
+                "role": t.role,
+                "content": t.content,
+                "steps": t.steps,
+                "outcome": t.outcome,
+                "prior_history": t.prior_history,
+                "timestamp": t.timestamp,
+            }
+            for t in conv.turns
+        ],
+        "workspace": conv.workspace,
+        "mode": conv.mode,
+        "created_at": conv.created_at,
+        "updated_at": conv.updated_at,
+    }
+    _conv_path(conv.id).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_conv(conv_id: str) -> Conversation | None:
+    p = _conv_path(conv_id)
+    if not p.exists():
+        return None
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return Conversation(
+        id=data["id"],
+        title=data["title"],
+        turns=[ConvTurn(**t) for t in data.get("turns", [])],
+        workspace=data.get("workspace", "./workspace"),
+        mode=data.get("mode", "mock"),
+        created_at=data.get("created_at", ""),
+        updated_at=data.get("updated_at", ""),
+    )
+
+
+def _list_convs() -> list[dict]:
+    """列出所有已保存对话(摘要,不含完整 turns)。"""
+    if not _CONV_DIR.exists():
+        return []
+    result = []
+    for p in sorted(_CONV_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            result.append({
+                "id": data["id"],
+                "title": data.get("title", ""),
+                "turn_count": len(data.get("turns", [])),
+                "workspace": data.get("workspace", ""),
+                "mode": data.get("mode", ""),
+                "created_at": data.get("created_at", ""),
+                "updated_at": data.get("updated_at", ""),
+            })
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return result
+
+
+def _serialize_messages(msgs: list[Message]) -> list[dict]:
+    return [{"role": m.role, "content": m.content} for m in msgs]
+
+
+def _deserialize_messages(data: list[dict] | None) -> list[Message]:
+    if not data:
+        return []
+    return [Message(role=d["role"], content=d["content"]) for d in data]
+
+
 def _build_file_tree(root: Path, rel: Path | None = None, depth: int = 0) -> dict:
-    """安全构建文件树,限制深度和类型,禁止越界。"""
     if rel is None:
         rel = root
     target = root / rel
@@ -72,7 +177,6 @@ def _build_file_tree(root: Path, rel: Path | None = None, depth: int = 0) -> dic
     name = target.name
     if target.is_file():
         return {"name": name, "path": str(rel), "type": "file"}
-
     if target.is_dir():
         if depth >= 3:
             return {"name": name, "path": str(rel), "type": "dir", "children": None, "truncated": True}
@@ -107,42 +211,76 @@ def create_app(
     mock_script: list | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Coding Agent Harness")
-    tasks_state: dict[str, dict] = {}
     creds = Creds()
-    # 可变工作区(运行时可通过 UI 切换)
     _workspace: dict[str, str] = {"path": str(project_root)}
-    # 任务历史(内存)
-    _history: list[dict] = []
-    # 当前模式
     _mode: dict[str, bool] = {"mock": use_mock}
+    # 活跃对话:conv_id → {loop, queue, events_log, thread, conversation}
+    _active: dict[str, dict] = {}
 
     if config is None:
         config = _default_config(str(project_root))
-
-    def _make_config() -> Config:
-        """用当前工作区创建配置。"""
-        return _default_config(_workspace["path"])
 
     @app.get("/")
     def index():
         return FileResponse(Path(__file__).parent / "static" / "index.html")
 
-    # ── 任务提交 ──
-    @app.post("/api/tasks")
-    async def submit(req: TaskReq):
-        task_id = uuid.uuid4().hex
+    # ═══════════════════════════════════════════
+    # 对话 API
+    # ═══════════════════════════════════════════
+
+    @app.get("/api/conversations")
+    def list_conversations():
+        return {"conversations": _list_convs()}
+
+    @app.get("/api/conversations/{conv_id}")
+    def get_conversation(conv_id: str):
+        conv = _load_conv(conv_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="对话不存在")
+        return {
+            "id": conv.id, "title": conv.title,
+            "turns": [
+                {
+                    "role": t.role, "content": t.content,
+                    "steps": t.steps, "outcome": t.outcome,
+                    "timestamp": t.timestamp,
+                }
+                for t in conv.turns
+            ],
+            "workspace": conv.workspace, "mode": conv.mode,
+            "created_at": conv.created_at, "updated_at": conv.updated_at,
+        }
+
+    @app.delete("/api/conversations/{conv_id}")
+    def delete_conversation(conv_id: str):
+        p = _conv_path(conv_id)
+        if p.exists():
+            p.unlink()
+        return {"ok": True}
+
+    @app.post("/api/conversations/{conv_id}/messages")
+    async def send_message(conv_id: str, req: TaskReq):
+        """向已有对话发送新消息,继续多轮对话。"""
+        conv = _load_conv(conv_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="对话不存在")
+
         queue: asyncio.Queue = asyncio.Queue()
-        events_log: list[dict] = []
         loop = asyncio.get_running_loop()
 
         def emit(e: dict) -> None:
-            events_log.append(e)
             try:
                 loop.call_soon_threadsafe(queue.put_nowait, e)
             except RuntimeError:
                 pass
 
-        ws = req.workspace or _workspace["path"]
+        # 从最后一轮的 prior_history 恢复上下文
+        prior_history = None
+        if conv.turns:
+            last = conv.turns[-1]
+            prior_history = _deserialize_messages(last.prior_history)
+
+        ws = conv.workspace
         cfg = _default_config(ws)
         mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
         llm = (
@@ -152,39 +290,144 @@ def create_app(
         )
         agent = AgentLoop(llm=llm, config=cfg, memory=mem, on_event=emit, hitl_enabled=True)
 
+        # 收集本轮事件(供存储)
+        events_log: list[dict] = []
+
+        def emit_and_log(e: dict) -> None:
+            events_log.append(e)
+            emit(e)
+
+        # 重新绑定 on_event
+        agent.on_event = emit_and_log
+
+        ts = datetime.now(timezone.utc).isoformat()
+
         def worker():
-            result = None
-            ts = datetime.now(timezone.utc).isoformat()
+            # 添加用户消息到对话
+            conv.turns.append(ConvTurn(
+                role="user", content=req.task, timestamp=ts,
+            ))
+            outcome = "error"
             try:
-                result = agent.run(req.task, lambda: ts)
+                result = agent.run(req.task, lambda: ts, prior_history=prior_history)
+                outcome = result.outcome
             except Exception as e:
-                emit({"type": "error", "msg": str(e)})
+                emit_and_log({"type": "error", "msg": str(e)})
             finally:
-                _history.insert(0, {
-                    "task_id": task_id,
-                    "task": req.task,
-                    "workspace": ws,
-                    "outcome": result.outcome if result else "error",
-                    "steps": len(result.steps) if result else 0,
-                    "timestamp": ts,
-                })
-                # 只保留最近 100 条
-                if len(_history) > 100:
-                    _history.pop()
-                emit({"type": "loop_stopped", "outcome": result.outcome if result else "error"})
+                # 收集本轮 agent 的 conversation_history 供下一轮恢复
+                ch = _serialize_messages(agent.conversation_history)
+                conv.turns.append(ConvTurn(
+                    role="agent",
+                    content=_extract_agent_text(events_log),
+                    steps=[e for e in events_log if e.get("type") not in ("response", "loop_stopped", "error")],
+                    outcome=outcome,
+                    prior_history=ch,
+                    timestamp=ts,
+                ))
+                conv.updated_at = ts
+                _save_conv(conv)
+                emit_and_log({"type": "loop_stopped", "outcome": outcome})
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
-        tasks_state[task_id] = {
-            "loop": agent, "queue": queue, "events": events_log, "thread": thread,
-        }
-        return {"task_id": task_id}
+        _active[conv_id] = {"loop": agent, "queue": queue, "events_log": events_log, "thread": thread}
+        return {"conversation_id": conv_id}
 
-    @app.get("/api/tasks/{task_id}/events")
-    async def events(task_id: str):
-        entry = tasks_state.get(task_id)
+    # ═══════════════════════════════════════════
+    # 任务提交(创建新对话或继续已有)
+    # ═══════════════════════════════════════════
+
+    @app.post("/api/tasks")
+    async def submit(req: TaskReq):
+        """创建新对话或继续已有对话。"""
+        ts = datetime.now(timezone.utc).isoformat()
+
+        # 确定是新对话还是继续已有
+        if req.conversation_id:
+            conv = _load_conv(req.conversation_id)
+            if not conv:
+                raise HTTPException(status_code=404, detail="对话不存在")
+        else:
+            conv_id = uuid.uuid4().hex[:12]
+            ws = req.workspace or _workspace["path"]
+            title = req.task[:80] + ("…" if len(req.task) > 80 else "")
+            conv = Conversation(
+                id=conv_id, title=title,
+                workspace=ws, mode="mock" if _mode["mock"] else "real",
+                created_at=ts, updated_at=ts,
+            )
+
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        events_log: list[dict] = []
+
+        def emit(e: dict) -> None:
+            events_log.append(e)
+            try:
+                loop.call_soon_threadsafe(queue.put_nowait, e)
+            except RuntimeError:
+                pass
+
+        # 从对话最后一轮的 prior_history 恢复上下文
+        prior_history = None
+        if conv.turns:
+            last_agent_turn = None
+            for t in reversed(conv.turns):
+                if t.role == "agent" and t.prior_history:
+                    last_agent_turn = t
+                    break
+            if last_agent_turn:
+                prior_history = _deserialize_messages(last_agent_turn.prior_history)
+
+        ws = conv.workspace
+        cfg = _default_config(ws)
+        mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+        llm = (
+            MockLLMClient(mock_script if mock_script is not None else _demo_script())
+            if _mode["mock"]
+            else _real_llm(creds)
+        )
+        agent = AgentLoop(llm=llm, config=cfg, memory=mem, on_event=emit, hitl_enabled=True)
+
+        # 添加用户消息
+        conv.turns.append(ConvTurn(role="user", content=req.task, timestamp=ts))
+
+        def worker():
+            outcome = "error"
+            try:
+                result = agent.run(req.task, lambda: ts, prior_history=prior_history)
+                outcome = result.outcome
+            except Exception as e:
+                emit({"type": "error", "msg": str(e)})
+            finally:
+                ch = _serialize_messages(agent.conversation_history)
+                conv.turns.append(ConvTurn(
+                    role="agent",
+                    content=_extract_agent_text(events_log),
+                    steps=[e for e in events_log if e.get("type") not in ("response", "loop_stopped", "error")],
+                    outcome=outcome,
+                    prior_history=ch,
+                    timestamp=ts,
+                ))
+                conv.updated_at = ts
+                _save_conv(conv)
+                emit({"type": "loop_stopped", "outcome": outcome})
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        _active[conv.id] = {"loop": agent, "queue": queue, "events_log": events_log, "thread": thread}
+        return {"conversation_id": conv.id, "task_id": conv.id}
+
+    # ═══════════════════════════════════════════
+    # SSE 事件流
+    # ═══════════════════════════════════════════
+
+    @app.get("/api/tasks/{conv_id}/events")
+    async def events(conv_id: str):
+        entry = _active.get(conv_id)
         if entry is None:
-            raise HTTPException(status_code=404, detail="unknown task_id")
+            raise HTTPException(status_code=404, detail="unknown id")
 
         async def stream():
             q = entry["queue"]
@@ -195,30 +438,32 @@ def create_app(
                     break
         return StreamingResponse(stream(), media_type="text/event-stream")
 
-    @app.post("/api/tasks/{task_id}/approvals/{aid}")
-    def approve(task_id: str, aid: str, req: ApproveReq):
-        entry = tasks_state.get(task_id)
+    # ═══════════════════════════════════════════
+    # HITL 审批
+    # ═══════════════════════════════════════════
+
+    @app.post("/api/tasks/{conv_id}/approvals/{aid}")
+    def approve(conv_id: str, aid: str, req: ApproveReq):
+        entry = _active.get(conv_id)
         if entry is None:
-            raise HTTPException(status_code=404, detail="unknown task_id")
+            raise HTTPException(status_code=404, detail="unknown id")
         entry["loop"].approve(aid, req.decision)
         return {"ok": True, "approved": req.decision}
 
-    @app.get("/api/tasks/{task_id}/pending")
-    def pending(task_id: str):
-        entry = tasks_state.get(task_id)
+    @app.get("/api/tasks/{conv_id}/pending")
+    def pending(conv_id: str):
+        entry = _active.get(conv_id)
         if entry is None:
-            raise HTTPException(status_code=404, detail="unknown task_id")
+            raise HTTPException(status_code=404, detail="unknown id")
         snap = entry["loop"].current_pending()
         if not snap:
             return {"pending": False}
         return {"pending": True, **snap}
 
-    # ── 任务历史 ──
-    @app.get("/api/tasks")
-    def list_tasks():
-        return {"tasks": _history}
+    # ═══════════════════════════════════════════
+    # 工作区文件浏览
+    # ═══════════════════════════════════════════
 
-    # ── 工作区文件树 ──
     @app.get("/api/workspace/tree")
     def workspace_tree():
         root = Path(_workspace["path"]).resolve()
@@ -228,7 +473,6 @@ def create_app(
 
     @app.get("/api/workspace/file")
     def workspace_file(path: str = Query(...)):
-        """读取工作区内文件内容(安全围栏:禁止越界)。"""
         root = Path(_workspace["path"]).resolve()
         target = (root / path).resolve()
         if not str(target).startswith(str(root)):
@@ -245,10 +489,12 @@ def create_app(
             raise HTTPException(status_code=500, detail=str(e))
         return {"path": str(path), "content": content, "size": target.stat().st_size}
 
-    # ── 配置与信息 ──
+    # ═══════════════════════════════════════════
+    # 配置与凭据
+    # ═══════════════════════════════════════════
+
     @app.get("/api/config")
     def config_info():
-        """返回当前配置(不含敏感信息)。"""
         cred_info = creds.info()
         return {
             "mode": "mock" if _mode["mock"] else "real",
@@ -261,13 +507,11 @@ def create_app(
 
     @app.post("/api/config/model")
     def switch_model(req: ModelSwitchReq):
-        """切换 LLM 模型(更新 keychain 中存储的 model)。"""
         creds.set_model(req.model)
         return {"model": req.model, "ok": True}
 
     @app.post("/api/config/workspace")
     def switch_workspace(req: WorkspaceSwitchReq):
-        """切换工作区目录。"""
         new_root = Path(req.workspace).resolve()
         if not new_root.exists():
             new_root.mkdir(parents=True, exist_ok=True)
@@ -276,14 +520,11 @@ def create_app(
 
     @app.post("/api/config/mode")
     def switch_mode(req: ModeSwitchReq):
-        """切换 mock/real 模式。"""
-        mode = req.mode
-        if mode not in ("mock", "real"):
+        if req.mode not in ("mock", "real"):
             raise HTTPException(status_code=400, detail="mode 必须为 mock 或 real")
-        _mode["mock"] = mode == "mock"
-        return {"mode": mode, "ok": True}
+        _mode["mock"] = req.mode == "mock"
+        return {"mode": req.mode, "ok": True}
 
-    # ── 凭据管理 ──
     @app.get("/api/credentials/status")
     def cred_status():
         return creds.status()
@@ -293,14 +534,23 @@ def create_app(
         creds.set(req.api_key, req.base_url, req.model)
         return {"set": True}
 
+    # ── 静态文件 ──
     static = Path(__file__).parent / "static"
     static.mkdir(exist_ok=True)
     app.mount("/static", StaticFiles(directory=static), name="static")
     return app
 
 
+def _extract_agent_text(events: list[dict]) -> str:
+    """从事件列表中提取 agent 的纯文本回复(合并所有 response 事件)。"""
+    parts = []
+    for e in events:
+        if e.get("type") == "response":
+            parts.append(e.get("text", ""))
+    return "\n\n".join(parts) if parts else ""
+
+
 def _default_config(project_root: str) -> Config:
-    """无 config.yaml 时用最小默认(project_root + llm 占位);其余取 dataclass 默认。"""
     f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
     try:
         yaml.safe_dump(
@@ -317,7 +567,6 @@ def _default_config(project_root: str) -> Config:
 
 
 def _demo_script():
-    """WebUI 演示脚本:红→绿。"""
     from coding_agent_harness.models import WriteFile, RunTests, Stop
     return [
         {"when": "round 1", "action": WriteFile("calc.py", "def add(a,b):\n    return a+b+2\n"), "intent": "我先改返回值"},
