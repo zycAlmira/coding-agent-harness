@@ -219,14 +219,28 @@ class AgentLoop:
                 outcome = "error"
                 steps.append(Step(turn=None, verdict=None, tool_result=None, feedback=None, ts=ts_provider()))
                 break
-            # 纯文本回复(非 tool call):发送给前端,记录对话历史,继续循环。
-            # LLM 可在回复后调用工具或 stop,实现"回答+操作"穿插。
+            # 纯文本回复(非 tool call):发送给前端,记录对话历史。
+            # 回复后给 LLM 一次机会调用 stop;如果连续两次纯文本回复(中间无工具调用),
+            # 说明 LLM 只是在反复说话不停止,自动结束循环防止死循环。
             if isinstance(turn.action, Respond):
                 self.on_event({"type": "response", "text": turn.action.text})
                 self.conversation_history.append(Message("assistant", turn.action.text[:2000]))
                 steps.append(Step(turn=turn, verdict=None, tool_result=ToolResult(ok=True, output=turn.action.text), feedback=None, ts=ts_provider()))
+                # 连续 Respond 计数:上次也是 Respond 则加 1,否则从 1 开始。
+                _consecutive_responds = getattr(self, '_consecutive_responds', 0)
+                _consecutive_responds += 1
+                self._consecutive_responds = _consecutive_responds
+                if _consecutive_responds >= 2:
+                    # LLM 连续回复文字但不 stop:自动结束,以 stopped 作为结局。
+                    outcome = "stopped"
+                    self.on_event({"type": "response", "text": "(agent 回复完毕,自动停止)"})
+                    break
+                # 注入提示让 LLM 调用 stop
+                state.context_injected.append("你已经完成了文字回复。如果回答完毕,请调用 stop。")
                 continue
             v = self.guard(turn.action, self.config)
+            # 非 Respond 的工具调用:重置连续 Respond 计数。允许 Respond→Tool→Respond 模式。
+            self._consecutive_responds = 0
             self.on_event({"type": "guardrail_verdict", "verdict": type(v).__name__, "intent": turn.intent})
             vname = type(v).__name__
             if vname == "Deny":
