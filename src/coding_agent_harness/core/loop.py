@@ -95,17 +95,20 @@ class AgentLoop:
         convs = self.memory.load_conventions()
         sys = Message("system", (
             "你是一个 coding agent。可用工具:read_file/write_file/delete_file/list_dir/run_shell/run_tests/stop。"
-            "\n\n工作流程(必须遵守):"
-            "\n1. 每次只输出一个工具调用,并附 intent(一句话动机)。"
-            "\n2. 工具执行后你会看到结果;根据结果决定下一步。"
-            "\n3. 【关键】完成所有工具操作后,必须先用纯文字回复用户(不调任何工具),然后才调 stop。"
-            "\n   例如查文件→用文字说明查到了什么;改代码→用文字说明改了什么;修bug→用文字说明修复结果。"
-            "\n   禁止在没有任何文字回复的情况下直接 stop!"
-            "\n\n任务类型判断:"
-            "\n- 【代码修改】用户要求改代码/修bug/加功能:读→改→测试→文字总结→stop"
-            "\n- 【查看/问答】用户只问问题、查看文件、了解项目:直接文字回复→stop。不要跑测试!"
-            "\n\n其他规则:"
-            "\n- 测试断言是真理,实现代码必须迁就测试,不要修改测试文件。"
+            "\n\n## 核心规则"
+            "\n1. 每次只调用一个工具,附 intent(一句话说明动机)。"
+            "\n2. 先理解需求再动手。不要做用户没要求的事。"
+            "\n3. 所有操作完成后,先用纯文字回答用户,然后才 stop。禁止无文字回复直接 stop。"
+            "\n\n## 按用户意图分流"
+            "\n- 用户说「列出/看看/有哪些文件」:调 list_dir → 直接文字回复看到了什么 → stop。**不要读文件内容,不要跑测试。**"
+            "\n- 用户说「读一下/看看 xxx 文件的内容」:调 read_file → 文字回复文件内容/概述 → stop。**不要跑测试。**"
+            "\n- 用户说「修复/修/改/fix xxx」:读→改→跑测试→文字回复结果→stop。**必须先看懂再改。**"
+            "\n- 用户问问题/概念/解释:直接文字回复 → stop。**不要调任何工具。**"
+            "\n\n## 严禁行为"
+            "\n- 用户只让你列文件,你跑去读文件内容 → 违反规则"
+            "\n- 用户只让你看文件,你跑去跑测试 → 违反规则"
+            "\n- 没有任何文字回复就直接 stop → 违反规则"
+            "\n- 修改测试文件 → 绝对禁止。测试断言是真理。"
             + ("\n项目约定:\n" + "\n".join(convs) if convs else "")
         ))
         msgs = [sys, Message("user", task)]
@@ -263,15 +266,18 @@ class AgentLoop:
             # 结果是什么",让模型清楚知道需要继续输出下一个 function call。
             action_name = type(turn.action).__name__
             output_text = tr.output if tr.output else (tr.error or "(无输出)")
-            # 根据动作类型给不同的后续提示
-            if action_name in ("ReadFile", "ListDir"):
-                next_hint = "请用文字描述你看到了什么,然后决定下一步操作。任务完成则输出文字总结后调用 stop。"
+            # 根据动作类型给不同的后续提示——不过度引导"下一步",
+            # 让系统提示词的意图分流规则主导决策。
+            if action_name in ("ListDir",):
+                next_hint = "请回忆用户想做什么:如果只是列文件,直接用文字回复看到了什么然后 stop;如果是要改代码,继续下一步。不要读文件内容除非用户明确要求。"
+            elif action_name in ("ReadFile",):
+                next_hint = "请回忆用户想做什么:如果只是看文件内容,直接用文字回复内容概述然后 stop;如果是要改代码,继续下一步。不要跑测试除非修了代码需要验证。"
             elif action_name in ("RunTests",):
-                next_hint = "请根据测试结果用文字说明情况,然后决定下一步。全部通过则输出文字总结后调用 stop。"
+                next_hint = "请根据测试结果用文字说明情况。全部通过则用文字总结修复内容然后 stop。"
             elif action_name in ("WriteFile",):
-                next_hint = "修改已完成。如果需要验证请跑测试,否则用文字说明修改了什么。任务完成则输出文字总结后调用 stop。"
+                next_hint = "修改已写入。如果需要验证请跑测试;如果只是添加/修改文件,用文字说明改了什么,然后 stop 或继续下一步。"
             else:
-                next_hint = "请基于以上结果输出下一个工具调用。如果任务已完成,用文字总结后调用 stop。"
+                next_hint = "请基于以上结果,判断任务是否完成。完成了就用文字总结然后 stop,否则继续。"
             self.conversation_history.append(Message(
                 "user",
                 f"[上一步] {action_name}: {turn.intent}\n"
