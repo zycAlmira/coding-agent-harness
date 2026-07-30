@@ -244,7 +244,7 @@
     <button class="ghost" id="btnNewSession" onclick="newSession()" title="新会话">＋ 新会话</button>
     <span class="sep"></span>
     <select id="modelSelect" onchange="switchModel(this.value)" title="模型"></select>
-    <input id="wsInput" type="text" title="工作区" style="width:130px;" onchange="switchWorkspace(this.value)" />
+    <button class="ghost" id="btnWorkspace" onclick="pickWorkspace()" title="选择工作目录">📁 <span id="wsLabel">workspace</span></button>
     <span class="sep"></span>
     <span id="modeBadge" class="badge">mock</span>
     <button class="ghost" style="font-size:11px;" onclick="toggleMode()" title="切换 mock/real">⇄</button>
@@ -773,7 +773,8 @@
       fetch('/api/config').then(r => r.json()).then(c => {
         document.getElementById('modeBadge').textContent = c.mode;
         document.getElementById('modeBadge').className = 'badge badge-' + (c.mode === 'mock' ? 'mock' : 'real');
-        document.getElementById('wsInput').value = c.workspace || './workspace';
+        document.getElementById('wsLabel').textContent = (c.workspace || './workspace').split('/').pop() || 'workspace';
+        document.getElementById('btnWorkspace').title = '工作目录: ' + (c.workspace || './workspace');
         updateStat('stMode', c.mode);
         updateStat('stModel', c.model || '—');
         const sel = document.getElementById('modelSelect');
@@ -808,9 +809,19 @@
         .then(r => r.json()).then(d => updateStat('stModel', d.model));
     }
 
-    function switchWorkspace(ws) {
-      fetch('/api/config/workspace', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({workspace:ws})})
-        .then(r => r.json()).then(d => { document.getElementById('wsInput').value = d.workspace; loadFileTree(); });
+    function pickWorkspace() {
+      fetch('/api/workspace/picker', {method:'POST'}).then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.detail || '取消'); });
+        return r.json();
+      }).then(d => {
+        document.getElementById('wsLabel').textContent = d.path.split('/').pop() || d.path;
+        document.getElementById('btnWorkspace').title = '工作目录: ' + d.path;
+        updateStat('stStatus', '工作区已切换');
+        loadFileTree();
+        loadConfig();  // 刷新配置信息
+      }).catch(e => {
+        if (e.message !== '取消') alert('选择工作目录失败: ' + e.message);
+      });
     }
 
     function toggleMode() {

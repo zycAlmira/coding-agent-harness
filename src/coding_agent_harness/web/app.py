@@ -487,6 +487,64 @@ def create_app(
     # 工作区文件浏览
     # ═══════════════════════════════════════════
 
+    @app.post("/api/workspace/picker")
+    def workspace_picker():
+        """打开系统原生文件夹选择器(macOS 访达/Win 资源管理器),返回所选路径。"""
+        import platform
+        import subprocess
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                # macOS: 用 AppleScript 调用访达选择文件夹
+                script = (
+                    'set folderPath to choose folder with prompt "选择工作目录"\n'
+                    'return POSIX path of folderPath'
+                )
+                proc = subprocess.run(
+                    ["osascript", "-e", script],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if proc.returncode != 0:
+                    detail = proc.stderr.strip() or "用户取消选择"
+                    raise HTTPException(status_code=400, detail=detail)
+                path = proc.stdout.strip().rstrip("/")
+                if not path:
+                    raise HTTPException(status_code=400, detail="未选择文件夹")
+            elif system == "Windows":
+                # Windows: PowerShell FolderBrowserDialog
+                ps_script = (
+                    'Add-Type -AssemblyName System.Windows.Forms\n'
+                    '$f = New-Object System.Windows.Forms.FolderBrowserDialog\n'
+                    '$f.Description = "选择工作目录"\n'
+                    'if ($f.ShowDialog() -eq "OK") { $f.SelectedPath }'
+                )
+                proc = subprocess.run(
+                    ["powershell", "-Command", ps_script],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if proc.returncode != 0:
+                    raise HTTPException(status_code=400, detail=proc.stderr.strip() or "用户取消选择")
+                path = proc.stdout.strip()
+                if not path:
+                    raise HTTPException(status_code=400, detail="未选择文件夹")
+            else:
+                # Linux: 尝试 zenity, 无 GUI 则回退
+                proc = subprocess.run(
+                    ["zenity", "--file-selection", "--directory", "--title=选择工作目录"],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if proc.returncode != 0:
+                    raise HTTPException(status_code=400, detail="用户取消选择或无图形界面(请手动输入路径)")
+                path = proc.stdout.strip()
+
+            # 更新当前工作区
+            _workspace["path"] = path
+            return {"path": path, "ok": True}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.get("/api/workspace/tree")
     def workspace_tree():
         root = Path(_workspace["path"]).resolve()
