@@ -760,6 +760,7 @@
           for (const m of p.models) {
             const opt = document.createElement('option');
             opt.value = m; opt.textContent = m;
+            if (p.base_url) opt.dataset.baseUrl = p.base_url;  // 跨供应商切换时自动更新 base_url
             if (m === c.model) opt.selected = true;
             og.appendChild(opt);
           }
@@ -774,7 +775,12 @@
     }
 
     function switchModel(model) {
-      fetch('/api/config/model', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model})})
+      // 查找模型对应的 base_url，跨供应商切换时自动更新
+      const sel = document.getElementById('modelSelect');
+      const opt = sel.options[sel.selectedIndex];
+      const body = { model };
+      if (opt && opt.dataset.baseUrl) body.base_url = opt.dataset.baseUrl;
+      fetch('/api/config/model', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
         .then(r => r.json()).then(d => updateStat('stModel', d.model));
     }
 

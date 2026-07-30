@@ -43,11 +43,11 @@ class Creds:
             "model": keyring.get_password(self.service, "model") or "",
         }
 
-    def set_model(self, model: str) -> None:
-        """仅更新模型名,保留现有 api_key 和 base_url。"""
+    def set_model(self, model: str, base_url: str | None = None) -> None:
+        """更新模型名(和可选的 base_url),保留现有 api_key。"""
         cred = self.get()
         if cred:
-            self.set(cred[0], cred[1], model)
+            self.set(cred[0], base_url or cred[1], model)
 
     def clear(self) -> None:
         for u in ("api_key", "base_url", "model"):

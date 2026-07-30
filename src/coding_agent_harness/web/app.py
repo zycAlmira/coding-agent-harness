@@ -40,6 +40,7 @@ class CredSetReq(BaseModel):
 
 class ModelSwitchReq(BaseModel):
     model: str
+    base_url: str | None = None  # 跨供应商切换时一并更新
 
 
 class WorkspaceSwitchReq(BaseModel):
@@ -76,13 +77,38 @@ class Conversation:
 # 对话持久化目录
 _CONV_DIR = Path("./conversations")
 
-# 已知模型列表
+# 已知模型列表(2026-07 最新)
 _KNOWN_MODELS = [
-    {"provider": "DeepSeek", "models": ["deepseek-chat", "deepseek-coder"]},
-    {"provider": "OpenAI", "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]},
-    {"provider": "通义千问", "models": ["qwen-turbo", "qwen-plus", "qwen-max"]},
-    {"provider": "Moonshot", "models": ["moonshot-v1-8k", "moonshot-v1-32k"]},
-    {"provider": "智谱", "models": ["glm-4", "glm-4-flash"]},
+    {
+        "provider": "DeepSeek",
+        "models": ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v3.2", "deepseek-chat"],
+        "base_url": "https://api.deepseek.com/v1",
+    },
+    {
+        "provider": "OpenAI",
+        "models": ["gpt-5.6-sol", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "o3", "o4-mini"],
+        "base_url": "https://api.openai.com/v1",
+    },
+    {
+        "provider": "Anthropic Claude",
+        "models": ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
+        "base_url": "https://api.anthropic.com/v1",
+    },
+    {
+        "provider": "Google Gemini",
+        "models": ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"],
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+    },
+    {
+        "provider": "通义千问 Qwen",
+        "models": ["qwen3.8-max-preview", "qwen3.7-max", "qwen3.7-plus", "qwen3.7-flash"],
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    },
+    {
+        "provider": "智谱 GLM",
+        "models": ["glm-5.2", "glm-5.1", "glm-5"],
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    },
 ]
 
 
@@ -504,7 +530,8 @@ def create_app(
 
     @app.post("/api/config/model")
     def switch_model(req: ModelSwitchReq):
-        creds.set_model(req.model)
+        """切换 LLM 模型(更新 keychain 中的 model 和可选 base_url)。"""
+        creds.set_model(req.model, base_url=req.base_url)
         return {"model": req.model, "ok": True}
 
     @app.post("/api/config/workspace")
