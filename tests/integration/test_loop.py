@@ -121,3 +121,73 @@ def test_loop_respond_twice_then_stop_via_prompt(tmp_path):
     assert result.outcome == "stopped"
     responds = [s for s in result.steps if isinstance(s.turn.action, Respond)]
     assert len(responds) == 3, "连续 2 次 Respond 不应自动停机(放宽到 3 次)"
+
+
+def test_loop_stop_trivial_reason_fallback_response(tmp_path):
+    """LLM 直接 stop 且 reason 为 done/空(无文字回复)→ 发兜底 response,
+    防止"做了事但用户看不到任何回答"。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    events = []
+    mock = MockLLMClient([
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem, on_event=events.append)
+    result = loop.run(task="修 bug", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    texts = [e["text"] for e in events if e["type"] == "response"]
+    assert texts, "stop 无文字时应发兜底 response,否则用户看不到回答"
+    assert "完成" in texts[0]
+
+
+def test_loop_stop_reason_emitted_as_response(tmp_path):
+    """Stop 带非 trivial reason → 直接发 response 事件展示总结(不重复兜底)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    events = []
+    mock = MockLLMClient([
+        {"when": "always", "action": Stop("修复了 calc.py,测试通过"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem, on_event=events.append)
+    loop.run(task="修 bug", ts_provider=lambda: "2026-07-22T00:00:00")
+    texts = [e["text"] for e in events if e["type"] == "response"]
+    assert texts == ["修复了 calc.py,测试通过"]
+
+
+def test_loop_run_tests_feedback_compact_feed(tmp_path):
+    """RunTests 回灌用一行摘要(fb 结果),详情由 feedback 消息提供——避免全文冗余。"""
+    import shutil
+    shutil.copytree(FIX, tmp_path / "ws", dirs_exist_ok=True)
+    ws = tmp_path / "ws"
+    mock = MockLLMClient([
+        {"when": "round 1", "action": RunTests(), "intent": "验证"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    loop.run(task="修 bug", ts_provider=lambda: "2026-07-22T00:00:00")
+    step_msgs = [m.content for m in loop.conversation_history
+                 if m.content.startswith("[上一步]") and "RunTests" in m.content]
+    assert step_msgs, "应存在 RunTests 的回灌消息"
+    assert "测试结果" in step_msgs[0], "RunTests 回灌应为一行摘要,而非全文"
+    assert "traceback" not in step_msgs[0].lower()
+
+
+def test_loop_history_compact_old_rounds():
+    """超过 MAX_FULL_STEPS 轮后,最早轮次的完整回灌压缩为一行摘要(Claude Code 式历史压缩)。"""
+    from coding_agent_harness.core.loop import MAX_FULL_STEPS
+    loop = AgentLoop(llm=None, config=None, memory=None)
+    for i in range(MAX_FULL_STEPS + 4):
+        loop._append_history(Message("user",
+            f"[上一步] WriteFile: 写文件 {i}\n[结果]\n" + "x" * 400 + "\n\n提示"))
+    steps = [m for m in loop.conversation_history if m.content.startswith("[上一步]")]
+    compacted = [m for m in loop.conversation_history if m.content.startswith("(历史")]
+    assert len(compacted) == 4, "最早的 4 轮应压缩为一行摘要"
+    assert len(steps) == MAX_FULL_STEPS, "完整回灌应只保留最近 MAX_FULL_STEPS 轮"
+    assert "写文件 0" in compacted[0].content, "压缩保留动作名与意图要点"
+    assert "[结果]" in steps[-1].content, "最近轮次保持完整"

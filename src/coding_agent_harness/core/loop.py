@@ -70,6 +70,9 @@ _AGENT_TOOLS = [
 # 对话历史条数上限:长会话下防止上下文无限膨胀(真实 LLM 上下文窗口有限),
 # 超过则丢弃最早的条目,保留最新上下文。mock 客户端忽略 messages,不受影响。
 MAX_HISTORY_MESSAGES = 30
+# 完整工具回灌保留的最近轮数:更早轮次的完整 [结果] 压缩成一行摘要
+# (Claude Code 式历史压缩——保留上下文要点,丢弃冗余全文)。
+MAX_FULL_STEPS = 8
 
 
 class AgentLoop:
@@ -102,33 +105,53 @@ class AgentLoop:
         self.conversation_history: list[Message] = []  # 对话历史:每轮追加 assistant + tool 消息
 
     def _append_history(self, msg: Message) -> None:
-        """追加一条对话历史,超上限时丢弃最早的条目(保留最新上下文)。"""
+        """追加一条对话历史:超 MAX_FULL_STEPS 轮后压缩最早轮次,超上限丢弃最早条目。"""
         self.conversation_history.append(msg)
+        self._compact_old_steps()
         if len(self.conversation_history) > MAX_HISTORY_MESSAGES:
             del self.conversation_history[: len(self.conversation_history) - MAX_HISTORY_MESSAGES]
+
+    def _compact_old_steps(self) -> None:
+        """把最早的完整工具回灌压缩成一行摘要(确定性纯逻辑,可单测)。
+
+        「[上一步] ActionName: intent\n[结果]\n…」这类消息超过 MAX_FULL_STEPS 条时,
+        最老的压缩为「(历史) ActionName: intent」——保留"做了什么"的要点,
+        丢弃全文结果(上下文聚焦最近轮次,避免膨胀导致回答冗余/失焦)。
+        """
+        step_idx = [i for i, m in enumerate(self.conversation_history)
+                    if m.content.startswith("[上一步]")]
+        excess = len(step_idx) - MAX_FULL_STEPS
+        if excess <= 0:
+            return
+        for i in step_idx[:excess]:
+            m = self.conversation_history[i]
+            first_line = m.content.split("\n")[0]  # "[上一步] ActionName: intent"
+            self.conversation_history[i] = Message("user", f"(历史) {first_line[4:]}")
 
     def _build_messages(self, task: str, state: LoopState) -> list[Message]:
         convs = self.memory.load_conventions()
         sys = Message("system", (
-            "你是一个 coding agent。可用工具:read_file/write_file/delete_file/list_dir/run_shell/run_tests/stop。"
-            "\n\n## 核心规则"
-            "\n1. 每次只调用一个工具,附 intent(一句话说明动机)。"
-            "\n2. 先理解需求再动手。不要做用户没要求的事。"
-            "\n3. 所有操作完成后,先用纯文字回答用户,然后才 stop。禁止无文字回复直接 stop。"
-            "\n\n## 按用户意图分流"
-            "\n- 用户说「列出/看看/有哪些文件」:调 list_dir → 直接文字回复看到了什么 → stop。**不要读文件内容,不要跑测试。**"
-            "\n- 用户说「读一下/看看 xxx 文件的内容」:调 read_file → 文字回复文件内容/概述 → stop。**不要跑测试。**"
-            "\n- 用户说「修复/修/改/fix xxx」:读→改→跑测试→文字回复结果→stop。**必须先看懂再改。**"
-            "\n- 用户说「只跑/运行 xxx 测试」:调 run_tests,path 填指定测试文件 → 文字回复结果 → stop。"
-            "\n- 用户问问题/概念/解释:直接文字回复 → stop。**不要调任何工具。**"
-            "\n- 用户说「分析/评估/看看这个项目/代码质量/架构/哪里有问题」:先 list_dir 了解结构 → 读 1-3 个关键文件(不读无关文件)→ 文字给出分析 → stop。**不要改代码,不要跑测试(除非用户要求)。**"
-            "\n- 用户说「继续/然后呢/接着修/为什么/结果呢」等衔接词:基于对话历史中上一步的结果继续——若上一步失败(测试 FAIL)则继续修复并重测;若已完成则直接回复总结。"
-            "\n- 用户一次提出多个任务(「先…再…」「列出…并解释…」):**逐个完成**,每完成一步用文字汇报,全部完成后 stop。不要遗漏任何一项。"
-            "\n\n## 严禁行为"
-            "\n- 用户只让你列文件,你跑去读文件内容 → 违反规则"
-            "\n- 用户只让你看文件,你跑去跑测试 → 违反规则"
-            "\n- 没有任何文字回复就直接 stop → 违反规则"
-            "\n- 修改测试文件 → 绝对禁止。测试断言是真理。"
+            "你是一个 coding agent,帮助用户处理代码任务。"
+            "可用工具:read_file/write_file/delete_file/list_dir/run_shell/run_tests/stop。"
+            "\n\n## 工作方式"
+            "\n1. 每次只调用一个工具,附 intent(一句话动机)。"
+            "\n2. 先理解需求再动手,只做用户要求的事。"
+            "\n3. 任务完成:先简短总结,再调 stop(reason 写工作总结)。"
+            "\n\n## 意图分流"
+            "\n- 列文件/读文件/问问题:用对应工具或直接回答,完成后 stop;不要跑测试。"
+            "\n- 修复/改代码:读→改→跑测试→总结→stop;先看懂再改。"
+            "\n- 只跑指定测试:run_tests 带 path 参数。"
+            "\n- 分析/评估项目:读 1-3 个关键文件→给出分析→stop;不改代码,不跑测试(除非用户要求)。"
+            "\n- 衔接词(继续/然后呢/为什么):基于上一步结果继续;上一步失败则修复重测,完成则总结。"
+            "\n- 多任务(先…再…):逐个完成,全部完成后统一总结。"
+            "\n\n## 严禁"
+            "\n- 修改测试文件(测试断言是真理)。"
+            "\n- 用户只要列文件/看文件,你却读内容或跑测试。"
+            "\n- 无文字回复直接 stop。"
+            "\n\n## 回复风格"
+            "\n- 直接回答用户的问题,先结论后细节,简短精炼。"
+            "\n- 不要复述用户任务,不要输出思考过程,不要逐条列举你调用的工具。"
+            "\n- 测试结果一句话带过(如「测试通过:3 passed」);失败时指出失败项与原因。"
             + ("\n项目约定:\n" + "\n".join(convs) if convs else "")
         ))
         msgs = [sys]
@@ -241,6 +264,8 @@ class AgentLoop:
             self.conversation_history = list(prior_history)
         while True:
             state.rounds += 1
+            # 本轮是否已有文字输出(Respond / 工具后的总结),Stop trivial 时据此决定兜底。
+            self._responded_this_round = False
             msgs = self._build_messages(task, state)
             try:
                 turn = self.llm.complete(msgs, _AGENT_TOOLS, state.snapshot())
@@ -252,6 +277,7 @@ class AgentLoop:
             # 回复后给 LLM 一次机会调用 stop;如果连续两次纯文本回复(中间无工具调用),
             # 说明 LLM 只是在反复说话不停止,自动结束循环防止死循环。
             if isinstance(turn.action, Respond):
+                self._responded_this_round = True
                 self.on_event({"type": "response", "text": turn.action.text})
                 self._append_history(Message("assistant", turn.action.text[:2000]))
                 steps.append(Step(turn=turn, verdict=None, tool_result=ToolResult(ok=True, output=turn.action.text), feedback=None, ts=ts_provider()))
@@ -320,29 +346,25 @@ class AgentLoop:
             # tool_calls/tool_call_id 结构;用 user 消息告知"上一步做了什么、
             # 结果是什么",让模型清楚知道需要继续输出下一个 function call。
             output_text = tr.output if tr.output else (tr.error or "(无输出)")
-            # 回灌截断:整段截尾会让 agent 只见开头(读大文件时基于错误信息决策)。
-            # 改为保留头尾:测试输出给更大额度(validator 已结构化提取关键信息),
-            # 其余动作头 800 + 尾 700。
+            # 回灌压缩(Claude Code 式:给模型的工具输出尽量精简):
+            # - RunTests:反馈详情已由 feedback 消息单独回灌,此处只回灌一行结果,
+            #   避免全文重复膨胀上下文。
+            # - 其余动作:保留头尾(读大文件时 agent 需要同时看到开头与结尾,
+            #   避免基于不完整信息决策),额度收紧。
             if action_name == "RunTests":
-                output_text = _truncate_middle(output_text, head=2000, tail=1000, limit=3000)
+                if fb is not None:
+                    output_text = f"测试结果: {fb.status} — {fb.summary}"
+                else:
+                    output_text = _truncate_middle(output_text, head=200, tail=100, limit=400)
             else:
-                output_text = _truncate_middle(output_text, head=800, tail=700, limit=1500)
-            # 根据动作类型给不同的后续提示——不过度引导"下一步",
-            # 让系统提示词的意图分流规则主导决策。
-            if action_name in ("ListDir",):
-                next_hint = "请回忆用户想做什么:如果只是列文件,直接用文字回复看到了什么然后 stop;如果是要改代码,继续下一步。不要读文件内容除非用户明确要求。"
-            elif action_name in ("ReadFile",):
-                next_hint = "请回忆用户想做什么:如果只是看文件内容,直接用文字回复内容概述然后 stop;如果是要改代码,继续下一步。不要跑测试除非修了代码需要验证。"
-            elif action_name in ("RunTests",):
-                next_hint = "请根据测试结果用文字说明情况。全部通过则用文字总结修复内容然后 stop。"
-            elif action_name in ("WriteFile",):
-                next_hint = "修改已写入。如果需要验证请跑测试;如果只是添加/修改文件,用文字说明改了什么,然后 stop 或继续下一步。"
-            else:
-                next_hint = "请基于以上结果,判断任务是否完成。完成了就用文字总结然后 stop,否则继续。"
+                output_text = _truncate_middle(output_text, head=500, tail=400, limit=900)
+            # 统一简短提示:不再按动作类型分化(避免逐轮累积的过度引导,
+            # 让系统提示词的意图分流规则主导决策)。
+            next_hint = "请根据以上结果决定下一步:任务完成则调用 stop(reason 附简短总结),否则继续。"
             self._append_history(Message(
                 "user",
                 f"[上一步] {action_name}: {turn.intent}\n"
-                f"[结果]\n{output_text[:1500]}\n\n{next_hint}"
+                f"[结果]\n{output_text}\n\n{next_hint}"
             ))
             if fb:
                 state = update_after_feedback(state, fb, self.config)
@@ -356,8 +378,14 @@ class AgentLoop:
             final_fb = fb or final_fb
             if isinstance(turn.action, Stop):
                 # Stop.reason 承载了 agent 的工作总结,发送给前端显示。
-                if turn.action.reason and turn.action.reason not in ("no_tool_call", "done", ""):
-                    self.on_event({"type": "response", "text": turn.action.reason})
+                # reason 为 trivial(空/done/no_tool_call)且本轮无任何文字输出时,
+                # 发兜底 response——防止"做了事但用户看不到回答"(真实 LLM 常直接
+                # stop 带个简短 reason,被 trivial 过滤后前端只剩胶囊)。
+                reason = turn.action.reason or ""
+                if reason and reason not in ("no_tool_call", "done"):
+                    self.on_event({"type": "response", "text": reason})
+                elif not self._responded_this_round:
+                    self.on_event({"type": "response", "text": "(任务完成)"})
                 outcome = "stopped"
                 break
             stop = decide_stop(state, self.config)
