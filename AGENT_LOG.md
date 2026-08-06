@@ -81,3 +81,50 @@
 - **2 Minor(已修)**:progress Task 4 账本漏勾→补 [x];README keychain"回落文件后端"措辞精确化。
 - 人工干预/用户决策:**暂不合 main,保持 feature/coding-agent-harness 分支**(无 remote,无法 push/建 PR)。本人后续:改写 REFLECTION(§五.8)、配 NJU Git remote push 触发 CI(§五.6/§五.7)、Fly.io 部署填 URL(§五.9)。
 - 教训:§五.8"本人撰写"、§五.9"可访问公网 URL"、§五.7"最后一次 CI pass"是 AI 协作的天然边界——AI 能准备好全部前置物(起草 REFLECTION、Dockerfile+fly.toml+deploy.sh、CI 配置),但"本人撰写""持云 token 部署""push 触发真实 CI"这三步必须人类完成。诚实标注这些边界比伪装完成更有价值。
+
+## 7/24–7/30 补记(真实 LLM 打磨 → 双平台 CI → 阿里云部署 → WebUI 重构)
+
+> 本节为 2026-08-06 事后补记,基于 git commit 记录与 message 中的根因分析重建;当时未留档的 prompt/context 细节以 commit message 为准,不虚构。
+
+### 阶段一(7/24):真实 LLM 端到端打磨
+
+- **c62a5ac 修复真实 LLM 无法执行多轮工具调用的三个 bug**(`loop.py` +68)。用 `harness serve --real --project-root ./fixtures/sample_pkg` 手工验证时暴露(mock 单测全绿但真实 API 跑不通):
+  1. `_build_messages` 每轮从零构建,缺对话历史 → LLM"失忆"无法续作。修:新增 `conversation_history`,每轮追加含上一步动作+结果的 user 消息。
+  2. `llm.complete()` 传空 tools 列表 → `tools: null`,DeepSeek 无法返回 function call,纯文本被转 `Stop('no_tool_call')`。修:定义 `_AGENT_TOOLS`(7 工具 JSON Schema)。
+  3. 系统提示未约束修改范围 → LLM 可能改测试文件迁就实现。修:加"修复实现代码,不要修改测试文件;测试断言是真理"规则。
+- **fa31e5a intent 必填**(`loop.py`):每个工具 Schema 的 properties 加 `intent` 并进 required,DeepSeek 每次 function call 填写动机;`_ACTION_BUILDERS` lambda 按 key 取值,多余字段忽略,兼容性安全。
+- **54a60ba Respond 文字回复与工作总结**(`loop.py` + models/guardrail/dispatch/前端):LLM 输出纯文本不再粗暴转 `Stop("no_tool_call")`,而是作为 `Respond` 发给前端并继续循环;PASS 后 `decide_stop` 不再自动返回 success,留给 agent 一轮文字总结再 Stop;**语义变化同步更新 3 个测试(PASS→stopped)**;FAIL 反馈消息 role 从 tool 改 user(DeepSeek 要求 tool_call_id 配对)。
+- **9b319e5 memory 记录成功修复**(`loop.py` +49):改进前仅 FAIL 记录且 fix 固定"(未修复)",历史检索无参考价值;改进后 PASS 也记录(从 feedback_history 找最近 FAIL 归类,无则 Unknown),fix 字段从 WriteFile 步骤提取文件+意图、从 Stop.reason 提取工作总结,symptom 区分"修复成功: N passed"。
+- **a30c77e serve 加 `--project-root`**:project_root 原硬编码 ./workspace,WebUI 内无法切换工作目录。
+
+### 阶段二(7/27):CI 双平台
+
+- **d336bbf 新增 GitHub Actions 并行 CI**(`.github/workflows/ci.yml`):GitLab CI 保留;GH Actions 适配 GitHub 平台,job 命名 `unit-test` 满足 §五.6 硬要求,push+PR 自动触发。
+- **30fa58f/fed594e 两个 CI 修复**:裸环境 `uv sync --frozen` 找不到 pytest(本地能跑是因为之前手动 sync 过)→ 去 `--frozen`;`uv sync` 不自动装 optional-dependencies → 显式 `--extra dev`。**教训:本地环境会掩盖依赖声明缺失,CI 裸环境才暴露。**
+
+### 阶段三(7/28):部署方案切换 + 提交审查清理
+
+- **cbdbbf4 Fly.io → 阿里云**:Fly.io 需绑信用卡,替换为阿里云轻量服务器/ECS;新增 `scripts/deploy-aliyun.sh`(本地构建 → SSH 上传镜像 → 服务器启动容器,映射 80→8000);README 部署章节改写,保留 fly.toml + deploy.sh 作参考。**外部约束(支付方式)驱动的方案切换,文档与脚本同步,不遗留死代码。**
+- **874c813 W1-W4 提交审查清理**:W1 补提交 index.html 回车键优化(之前漏提交);W2 `config.yaml` 加入 `.gitignore`(防意外提交含 key 配置——§3.1 防线加固);W3 `*.pptx *.pdf workspace/` 入 gitignore;W4 README CI 描述同时提及两平台。
+
+### 阶段四(7/28):WebUI 重构与对话体验(大幅改动,非 Plan 任务,用户驱动的需求迭代)
+
+- **488580b WebUI 全面重构**:三栏布局 + 步骤卡片(折叠/emoji/轮次编号)+ 状态面板实时化 + 任务历史侧栏 + 打字机流式输出;新增后端接口 `GET /api/tasks`(历史)、`GET /api/workspace/tree`(文件树)、`GET /api/workspace/file`(文件内容,路径越界 403);模型下拉(DeepSeek/OpenAI/通义千问/智谱)+ mock/real 切换;凭据管理加 `info()`(不回显)。
+- **3d0756c 聊天式 WebUI + 多轮对话**:agent 回复从时间线卡片改为独立聊天气泡(打字机 12ms/字+闪烁光标);工具调用渲染为可展开圆角胶囊;用户可在同会话发后续消息,agent 基于完整上下文继续;「新会话」归档历史;提示词区分「代码修改任务」/「非代码任务」(后者直接回复不跑测试)。
+- **722c446 三个 WebUI 问题修复**:① agent 只有工具调用无文字回复——系统提示词重写为「工作流程」三步法,工具回灌 hint 按动作类型分化(ReadFile→描述看到什么、RunTests→说明测试结果、WriteFile→说明改了什么);② 历史列表不可见——loadHistory 三层反馈 + escJs() 防注入;③ 文件树只显示部分文件——移除后缀白名单,过滤 .ruff_cache/.mypy_cache。
+- **6d757f7 提示词按用户意图精确分流**:用户说「列出文件」agent 却读代码+跑测试——根因是提示词「查看/问答」分类太宽泛;重构为三条核心规则 + 措辞分流(「列出/看看」→list_dir→回复→stop 不读不测;「读一下 xxx」→read_file→回复→stop 不测;「修复/改/fix」→读→改→测→回复→stop;「问问题」→直接回复→stop 不调工具)+「严禁行为」四类越权红线 + 工具回灌 hint 改「回忆用户意图」范式。
+- **64bc27c 修复纯文字回复死循环**:用户输入「你好」→ Respond → continue → 再 Respond → 无限循环直到 max_rounds=8。根因:Respond 分支只 continue 不打破循环,LLM 在纯问答场景不会主动调 stop。修:计数器 `_consecutive_responds` 追踪连续纯文字回复,工具调用时重置(允许 Respond→Tool→Respond 穿插),连续 2 次自动 break(outcome=stopped);第 1 次 Respond 后注入「请调用 stop」引导正常路径。**教训:交互类 bug(死循环)由人工试用发现而非测试发现——mock 脚本化分支不会自发产生 Respond 循环,该场景测试覆盖滞后于真实使用。**
+
+### 阶段五(7/30):UI 细节与模型列表
+
+- **335a1e2 模型列表更新至 2026-07 最新主流大模型**:DeepSeek V4-Pro/V4-Flash/V3.2;OpenAI GPT-5.6 Sol/5.5/5.4 系列;新增 Claude(Fable 5/Opus 4.8/Sonnet 5/Haiku 4.5)与 Gemini(3.6/3.5 系列);Qwen3.8/3.7 系列;GLM-5 系列;移除 Moonshot。每供应商带 base_url,前端切换模型自动更新 keychain 中的 base_url(跨供应商切换后 API 端点正确)。
+- **3eeebbd 发送按钮美化**:渐变圆形 + 箭头图标 + hover 放大辉光 + active 按压 + disabled 灰化。
+- **7f7e6ea 工作目录改系统原生文件夹选择器**:`POST /api/workspace/picker` 后端调 OS 原生对话框(macOS AppleScript 访达 / Windows PowerShell / Linux zenity,无 GUI 则手动输入),前端按钮+文件夹名替代文本输入框,选中后自动刷新文件树与配置。
+
+### 补记教训(承接全程教训汇总)
+
+8. **mock 单测全绿 ≠ 真实 LLM 可用**:c62a5ac 三 bug 全部只在 `--real` 手工验证暴露(失忆/tools 空列表/改测试文件)——mock 脚本化分支不验证 API 协议细节,真实集成验证应作为每轮打磨的固定步骤。
+9. **语义变化必须同步更新测试契约**:PASS→stopped 语义调整(54a60ba)同步改 3 个测试,避免"测试迁就新行为"或"行为与测试脱钩"。
+10. **CI 裸环境暴露依赖声明缺失**:`--frozen`/`--extra dev` 两连修——本地手工 sync 过的依赖会掩盖 pyproject 声明不完整。
+11. **外部约束驱动方案切换要清干净**:Fly.io 信用卡限制 → 阿里云,旧脚本保留为参考但 README 主路径更新,无死链接。
+12. **交互类 bug 靠人工试用暴露**:Respond 死循环(64bc27c)在真实使用中才发现;UI 打磨期的测试策略应是"测试守护核心机制 + 人工试用守护交互体验"。

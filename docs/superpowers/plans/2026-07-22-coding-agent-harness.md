@@ -67,6 +67,9 @@ coding-agent-harness/                     (仓库根 = 当前目录)
 
 ## Task 1: 项目脚手架与依赖
 
+**状态**:✅ 已完成 — commit: 76d6031, 2036933(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `pyproject.toml`
 - Create: `src/coding_agent_harness/__init__.py`
@@ -179,6 +182,9 @@ git commit -m "chore: 项目脚手架与依赖"
 ---
 
 ## Task 2: 值类型与数据模型 `models.py`
+
+**状态**:✅ 已完成 — commit: 208b6ad(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/models.py`
@@ -327,6 +333,9 @@ git commit -m "feat(models): 动作/判定/工具结果值类型"
 ---
 
 ## Task 3: 配置 `config.py`
+
+**状态**:✅ 已完成 — commit: de139cc, 44ee2ac(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/config.py`
@@ -487,6 +496,9 @@ git commit -m "feat(config): 声明式配置加载与默认值"
 
 ## Task 4: 失败分类 taxonomy
 
+**状态**:✅ 已完成 — commit: e39be09(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `src/coding_agent_harness/feedback/taxonomy.py`
 - Test: `tests/unit/test_taxonomy.py`
@@ -570,6 +582,9 @@ git commit -m "feat(feedback): 失败分类 taxonomy 与策略提示"
 ---
 
 ## Task 5: 反馈校验器 `Validator.parse`
+
+**状态**:✅ 已完成 — commit: 0a10f57, 3b25c9d(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/feedback/validator.py`
@@ -824,6 +839,9 @@ git commit -m "feat(feedback): Validator 解析 pytest 输出为结构化 Feedba
 
 ## Task 6: 工具 — 文件操作 `tools/files.py`
 
+**状态**:✅ 已完成 — commit: 25d5325(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `src/coding_agent_harness/tools/files.py`
 - Test: `tests/unit/test_files.py`
@@ -961,6 +979,9 @@ git commit -m "feat(tools): 文件读写删列与输出截断"
 
 ## Task 7: 工具 — 跨平台 shell `tools/shell.py`
 
+**状态**:✅ 已完成 — commit: 2248e66(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `src/coding_agent_harness/tools/shell.py`
 - Test: `tests/unit/test_shell.py`
@@ -1065,6 +1086,9 @@ git commit -m "feat(tools): 跨平台 shell 执行(shell=False)"
 ---
 
 ## Task 8: 工具 — pytest 运行器 `tools/tests_runner.py`
+
+**状态**:✅ 已完成 — commit: 3d8555d(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/tools/tests_runner.py`
@@ -1179,6 +1203,9 @@ git commit -m "feat(tools): pytest 运行器返回结构化结果"
 
 ## Task 9: 工具分发 `tools/dispatch.py`
 
+**状态**:✅ 已完成 — commit: ed5a15a(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `src/coding_agent_harness/tools/dispatch.py`
 - Test: `tests/unit/test_dispatch.py`
@@ -1269,6 +1296,9 @@ git commit -m "feat(tools): match-action 工具分发"
 ---
 
 ## Task 10: 记忆 store `memory/store.py`
+
+**状态**:✅ 已完成 — commit: 7614d2a(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/memory/store.py`
@@ -1418,6 +1448,9 @@ git commit -m "feat(memory): 分类索引记忆 store 与纯函数检索"
 
 ## Task 11: 治理护栏 `guardrails/guardrail.py`
 
+**状态**:✅ 已完成 — commit: 470eb68, 132e3c5(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `src/coding_agent_harness/guardrails/guardrail.py`
 - Test: `tests/unit/test_guardrail.py`
@@ -1556,6 +1589,9 @@ git commit -m "feat(guardrails): 护栏纯函数与路径围栏"
 
 ## Task 12: LLM 抽象层 `llm/base.py`
 
+**状态**:✅ 已完成 — commit: 43f7a72(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `src/coding_agent_harness/llm/__init__.py`
 - Create: `src/coding_agent_harness/llm/base.py`
@@ -1641,6 +1677,9 @@ git commit -m "feat(llm): LLMClient 抽象层与 Message 类型"
 ---
 
 ## Task 13: MockLLMClient `llm/mock.py`
+
+**状态**:✅ 已完成 — commit: 92e5fff(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/llm/mock.py`
@@ -1758,6 +1797,9 @@ git commit -m "feat(llm): 脚本化分支 MockLLMClient"
 ---
 
 ## Task 14: 循环状态与停机判断 `core/state.py`
+
+**状态**:✅ 已完成 — commit: 1e14e4f(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/core/__init__.py`
@@ -1963,6 +2005,9 @@ git commit -m "feat(core): LoopState 与停机/策略判断"
 ---
 
 ## Task 15: AgentLoop 主循环 `core/loop.py`
+
+**状态**:✅ 已完成 — commit: 06dd215, 4d2301f, 159da3e(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/core/loop.py`
@@ -2171,6 +2216,9 @@ git commit -m "feat(core): AgentLoop 主循环与红变绿集成测试"
 
 ## Task 16: 凭据管理 `creds/keychain.py`
 
+**状态**:✅ 已完成 — commit: 245f958(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `src/coding_agent_harness/creds/__init__.py`
 - Create: `src/coding_agent_harness/creds/keychain.py`
@@ -2270,6 +2318,9 @@ git commit -m "feat(creds): keyring 封装,不回显明文"
 ---
 
 ## Task 17: 真实 LLM 客户端 `llm/openai_compat.py`
+
+**状态**:✅ 已完成 — commit: c34effa(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/llm/openai_compat.py`
@@ -2403,6 +2454,9 @@ git commit -m "feat(llm): OpenAI 兼容真实客户端,key 不进日志"
 ---
 
 ## Task 18: §A.6 三个机制演示
+
+**状态**:✅ 已完成 — commit: 16d2e2d, 42308d4(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `tests/demo/__init__.py`
@@ -2573,6 +2627,9 @@ git commit -m "test(demo): §A.6 三个机制演示"
 ---
 
 ## Task 19: FastAPI WebUI 后端 `web/app.py`
+
+**状态**:✅ 已完成 — commit: 9209cde, aacc8df(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/web/__init__.py`
@@ -2753,6 +2810,9 @@ git commit -m "feat(web): FastAPI + SSE 后端"
 
 ## Task 20: 单页前端 `web/static/index.html`
 
+**状态**:✅ 已完成 — commit: 1d02173, 4f44626(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `src/coding_agent_harness/web/static/index.html`
 
@@ -2839,6 +2899,9 @@ git commit -m "feat(web): 单页前端 + Open Design token + SSE 渲染"
 ---
 
 ## Task 21: CLI 入口 `main.py`
+
+**状态**:✅ 已完成 — commit: 022a3c9, 0bd075c(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `src/coding_agent_harness/main.py`
@@ -2946,6 +3009,9 @@ git commit -m "feat(cli): serve/creds/run 子命令"
 
 ## Task 22: CI 配置
 
+**状态**:✅ 已完成 — commit: ac5b088, e5f73c3(详见 AGENT_LOG.md)
+
+
 **Files:**
 - Create: `.github/workflows/ci.yml`
 
@@ -2995,6 +3061,9 @@ git commit -m "ci: ubuntu+windows 矩阵 unit-test job"
 ---
 
 ## Task 23: Dockerfile 与云部署
+
+**状态**:✅ 已完成 — commit: 9641433, d876115(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `Dockerfile`
@@ -3049,6 +3118,9 @@ git commit -m "build(docker): 容器镜像与云部署工作流"
 ---
 
 ## Task 24: README 与安全边界章节
+
+**状态**:✅ 已完成 — commit: d3a8b0d, 53ef566(详见 AGENT_LOG.md)
+
 
 **Files:**
 - Create: `README.md`

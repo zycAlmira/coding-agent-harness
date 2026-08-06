@@ -12,6 +12,11 @@ AI4SE 期末项目 · Project A · Coding Agent Harness。一个**由学生自�
 - 反馈信号 = 确定性校验器,不是"提醒 LLM 注意"的提示词。
 - 每个核心机制(工具分发、治理拦截、反馈回灌、记忆读写、停机)在 **mock/stub LLM 下均可用确定性单元测试验证**(§A.4 判定标准:移除真实 LLM 后机制能否用单测验证)。
 
+## 分支与交付
+
+- **默认分支 `feature/coding-agent-harness` 即交付分支**:全部实现代码(24 个 Plan task + 后续 WebUI/CI/部署打磨)都在该分支,clone 下来即可直接使用。`main` 分支仅含项目文档与 SPEC/PLAN 初始提交,不承载实现。
+- 开发流程遵循 Superpowers 七步(§4):每功能/大模块开分支(或 worktree)一个 PR,提交/PR 描述标注由哪个 subagent 完成、人工改了哪些;`PLAN.md` 每完成一个 task 即标记完成并附 commit hash(详见根目录 `AGENT_LOG.md` 的全程记录)。
+
 ## 安装
 
 需 Python >= 3.11。用 [uv](https://docs.astral.sh/uv/) 管理依赖。
@@ -156,7 +161,7 @@ uv run pytest tests/demo/ -v
 ## 安全边界
 
 - **治理护栏**(`guardrails/guardrail.py`,纯函数):白名单精确首词匹配(`pytest`/`ruff`/`mypy` 等放行)+ 黑名单子串 Deny(`rm -rf`/`git push`/`sudo`/`curl`/`wget`/`chmod 777` 等);危险动作(删文件/写 shell)返 `NeedsApproval`,**机制是代码不是提示词**。
-- **HITL 审批**:`core/loop.py` 用 `threading.Event` 挂起 → WebUI `[通过]/[拒绝]` → `POST /api/tasks/{id}/approvals/{aid}` 恢复;`approval_id` 自增计数器(确定性,非 uuid)。
+- **HITL 审批**:`core/loop.py` 用 `threading.Event` 挂起 → WebUI `[通过]/[拒绝]` → `POST /api/tasks/{id}/approvals/{aid}` 恢复;`approval_id` 自增计数器(确定性,非 uuid)。审批超过 `guardrails.approval_timeout_sec`(默认 300s)无人响应则**按拒绝处理**,循环继续,前端收到 `approval_timeout` 事件后按钮置灰;超时后该审批失效,再次审批返回 404(友好错误,非 500)。
 - **intent 上送**:每个 Action 携带 LLM 自述 `intent: str`,穿透到 WebUI 审批按钮,供人判断动机。
 - **mock 模式不触网**:`MockLLMClient` 脚本化分支,首匹配胜出,无匹配抛错;默认 `serve` 即 mock,不碰真实 LLM key。
 - **不硬编码 key**:见上文「凭据与安全配置」;Dockerfile 无任何预置 key(`test_dockerfile.py::test_no_hardcoded_key` 守护)。
