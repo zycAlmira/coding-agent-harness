@@ -17,6 +17,7 @@
       font-family:system-ui,-apple-system,sans-serif; font-size:14px;
       display:flex; flex-direction:column; height:100vh;
     }
+    button { font-family:inherit; }
 
     /* ── 顶栏 ── */
     #topbar {
@@ -31,12 +32,16 @@
     #topbar button {
       padding:7px 12px; border:0; border-radius:6px; background:var(--accent);
       color:#fff; cursor:pointer; font-size:13px; white-space:nowrap;
+      display:inline-flex; align-items:center; gap:6px;
     }
-    #topbar button:hover { filter:brightness(1.1); }
+    #topbar button:hover { filter:brightness(1.08); }
     #topbar button.ghost { background:#e5e7eb; color:var(--text); }
     #topbar .badge {
-      font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600;
+      font-size:11px; padding:4px 10px; border-radius:10px; font-weight:600;
+      cursor:pointer; display:inline-flex; align-items:center; gap:4px;
+      transition:filter .15s;
     }
+    #topbar .badge:hover { filter:brightness(.95); }
     .badge-mock { background:#e5e7eb; color:#6b7280; }
     .badge-real { background:#dcfce7; color:var(--success); }
 
@@ -52,6 +57,7 @@
     #sidebar .tabs button {
       flex:1; padding:8px; border:0; background:none; cursor:pointer;
       font-size:12px; font-weight:600; color:var(--text2); border-bottom:2px solid transparent;
+      display:inline-flex; align-items:center; justify-content:center; gap:5px;
     }
     #sidebar .tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
     #sidebar .pane { flex:1; overflow-y:auto; padding:8px; display:none; }
@@ -113,14 +119,19 @@
       max-width:75%; background:#f5f3ff; border:1px solid #e9d5ff;
       padding:10px 14px; border-radius:4px 16px 16px 16px;
       font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-word;
-      color:var(--text);
+      color:var(--text); cursor:default;
     }
     .msg-agent .bubble.streaming::after {
       content:'▊'; animation:blink .8s infinite; color:var(--purple);
     }
+    .msg-agent .bubble.err {
+      background:#fef2f2; border-color:#fecaca; color:var(--danger);
+    }
+    .msg-agent .bubble.streamable { cursor:pointer; }
+    .msg-agent .bubble.streamable:hover { filter:brightness(.98); }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-    /* 工具步骤卡片(嵌在聊天流中) */
+    /* 工具步骤胶囊(嵌在聊天流中) */
     .tool-steps {
       margin:4px 0 12px 36px; /* 与 agent 气泡左对齐 */
     }
@@ -136,6 +147,8 @@
     .step-mini .si-intent { color:var(--text2); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .step-mini.pass { border-color:var(--success); background:#f0fdf4; }
     .step-mini.deny { border-color:var(--danger); background:#fef2f2; }
+    .step-mini.pass .si-ok { color:var(--success); }
+    .step-mini.deny .si-deny { color:var(--danger); }
     .step-detail {
       display:none; padding:8px; margin-top:4px; border-radius:6px;
       background:var(--surface); border:1px solid var(--border); font-size:12px;
@@ -148,13 +161,19 @@
     .step-detail .kv { margin:2px 0; }
     .step-detail .kv k { color:var(--text2); font-weight:600; }
 
-    /* 审批按钮 */
+    /* 审批卡片 */
     .approval-inline {
       margin:4px 0 12px 36px; padding:8px 12px;
       background:#fffbeb; border:1px solid #fcd34d; border-radius:8px;
     }
-    .approval-inline .btns { margin-top:6px; }
-    .approval-inline button { margin-right:6px; }
+    .approval-inline .btns { margin-top:6px; display:flex; gap:6px; }
+    .approval-inline .btns button {
+      border:0; border-radius:6px; padding:5px 12px; cursor:pointer; font-size:12px;
+    }
+    .btn-ok { background:var(--success); color:#fff; }
+    .btn-danger { background:var(--danger); color:#fff; }
+    .btn-ok:disabled, .btn-danger:disabled { opacity:.5; cursor:not-allowed; }
+    .approval-note { font-size:12px; color:var(--danger); margin-top:4px; }
 
     /* ── 输入区 ── */
     #chat-input {
@@ -170,7 +189,7 @@
     #btnSend {
       width:40px; height:40px; min-width:40px; border-radius:50%;
       background:linear-gradient(135deg, #2563eb, #4f46e5);
-      color:#fff; border:0; cursor:pointer; font-size:18px;
+      color:#fff; border:0; cursor:pointer;
       display:flex; align-items:center; justify-content:center;
       transition: all .2s ease;
       box-shadow:0 2px 8px rgba(37,99,235,.3);
@@ -195,12 +214,12 @@
 
     /* ── 右面板 ── */
     #panel {
-      width:240px; min-width:200px; background:var(--surface);
+      width:220px; min-width:180px; background:var(--surface);
       border-left:1px solid var(--border); overflow-y:auto; padding:12px;
     }
     #panel h4 {
       font-size:11px; color:var(--text2); text-transform:uppercase;
-      letter-spacing:.5px; margin:10px 0 4px;
+      letter-spacing:.5px; margin:12px 0 4px;
     }
     #panel h4:first-child { margin-top:0; }
     #panel .stat {
@@ -210,6 +229,13 @@
     #panel .stat .sv { font-weight:600; }
     #panel .stat .sv.ok { color:var(--success); }
     #panel .stat .sv.bad { color:var(--danger); }
+    #panel details {
+      margin-top:8px; border-top:1px dashed var(--border); padding-top:6px;
+    }
+    #panel details summary {
+      font-size:11px; color:var(--text2); cursor:pointer; user-select:none;
+      letter-spacing:.5px;
+    }
 
     /* 凭据弹窗 */
     .modal {
@@ -223,13 +249,16 @@
     }
     .modal input { padding:8px; border-radius:6px; border:1px solid #d1d5db; background:#fff; color:var(--text); }
     .modal .row { display:flex; gap:8px; }
-    .modal .row button { flex:1; }
+    .modal .row button { flex:1; border:0; border-radius:6px; padding:8px; cursor:pointer; font-size:13px; }
+    .modal .row .btn-primary { background:var(--accent); color:#fff; }
+    .modal .row .btn-plain { background:#e5e7eb; color:var(--text); }
 
     /* 空状态 */
     .empty-chat {
       text-align:center; color:var(--text2); margin-top:80px;
     }
     .empty-chat .icon { font-size:56px; margin-bottom:12px; }
+    .empty-chat .sub { font-size:12px; margin-top:4px; }
 
     /* 响应式 */
     @media (max-width:900px) {
@@ -241,14 +270,21 @@
 <body>
   <!-- ═══ 顶栏 ═══ -->
   <div id="topbar">
-    <button class="ghost" id="btnNewSession" onclick="newSession()" title="新会话">＋ 新会话</button>
+    <button class="ghost" id="btnNewSession" onclick="newSession()" title="新会话">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v12M2 8h12"/></svg>
+      新会话
+    </button>
     <span class="sep"></span>
     <select id="modelSelect" onchange="switchModel(this.value)" title="模型"></select>
-    <button class="ghost" id="btnWorkspace" onclick="pickWorkspace()" title="选择工作目录">📁 <span id="wsLabel">workspace</span></button>
+    <button class="ghost" id="btnWorkspace" onclick="pickWorkspace()" title="选择工作目录">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3l1.5 2H13a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5z"/></svg>
+      <span id="wsLabel">workspace</span>
+    </button>
     <span class="sep"></span>
-    <span id="modeBadge" class="badge">mock</span>
-    <button class="ghost" style="font-size:11px;" onclick="toggleMode()" title="切换 mock/real">⇄</button>
-    <button class="ghost" onclick="openCreds()">🔑</button>
+    <span id="modeBadge" class="badge badge-mock" onclick="toggleMode()" title="点击切换 mock/real"></span>
+    <button class="ghost" onclick="openCreds()" title="凭据管理" style="padding:7px 10px">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6.5" cy="10" r="3.5"/><path d="M9 7.5 14.5 2m-3 3 1.5 1.5M12.5 3.5 14 5"/></svg>
+    </button>
   </div>
 
   <!-- ═══ 主体 ═══ -->
@@ -256,8 +292,14 @@
     <!-- 侧栏: 历史 + 文件 -->
     <div id="sidebar">
       <div class="tabs">
-        <button class="active" id="tabHist" onclick="switchTab('history')">📋 历史</button>
-        <button id="tabFiles" onclick="switchTab('files')">📂 文件</button>
+        <button class="active" id="tabHist" onclick="switchTab('history')">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2 2h12v12H2z"/><path d="M5 6h6M5 9h6M5 12h3"/></svg>
+          历史
+        </button>
+        <button id="tabFiles" onclick="switchTab('files')">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3l1.5 2H13a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5z"/></svg>
+          文件
+        </button>
       </div>
       <div class="pane active" id="paneHistory"></div>
       <div class="pane" id="paneFiles"></div>
@@ -269,31 +311,35 @@
         <div class="empty-chat" id="emptyChat">
           <div class="icon">🤖</div>
           <div>输入任务开始对话</div>
-          <div style="font-size:12px;margin-top:4px;">agent 会读取代码、运行测试、回复你的问题</div>
+          <div class="sub">agent 会读取代码、运行测试、回复你的问题</div>
         </div>
       </div>
       <div id="chat-input">
         <textarea id="msgInput" rows="1" placeholder="输入指令… (Enter 发送, Shift+Enter 换行)"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"
           oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';"></textarea>
-        <button onclick="sendMessage()" id="btnSend" title="发送 (Enter)">➤</button>
+        <button onclick="sendMessage()" id="btnSend" title="发送 (Enter)">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+        </button>
       </div>
     </div>
 
     <!-- 状态面板 -->
     <div id="panel">
-      <h4>📊 当前会话</h4>
+      <h4>会话</h4>
       <div class="stat"><span>状态</span><span class="sv" id="stStatus">空闲</span></div>
-      <div class="stat"><span>轮次</span><span class="sv" id="stRound">—</span></div>
       <div class="stat"><span>对话轮</span><span class="sv" id="stTurns">—</span></div>
-      <div class="stat"><span>最后动作</span><span class="sv" id="stAction">—</span></div>
-      <div class="stat"><span>测试结果</span><span class="sv" id="stFeedback">—</span></div>
-      <div class="stat"><span>模式</span><span class="sv" id="stMode">mock</span></div>
       <div class="stat"><span>模型</span><span class="sv" id="stModel">—</span></div>
-      <h4>🔢 计数</h4>
-      <div class="stat"><span>护栏拦截</span><span class="sv" id="stDeny">0</span></div>
-      <div class="stat"><span>审批次数</span><span class="sv" id="stApprove">0</span></div>
-      <div class="stat"><span>工具调用</span><span class="sv" id="stTools">0</span></div>
+      <div class="stat"><span>模式</span><span class="sv" id="stMode">mock</span></div>
+      <details>
+        <summary>更多统计</summary>
+        <div class="stat"><span>轮次</span><span class="sv" id="stRound">—</span></div>
+        <div class="stat"><span>最后动作</span><span class="sv" id="stAction">—</span></div>
+        <div class="stat"><span>测试结果</span><span class="sv" id="stFeedback">—</span></div>
+        <div class="stat"><span>护栏拦截</span><span class="sv" id="stDeny">0</span></div>
+        <div class="stat"><span>审批次数</span><span class="sv" id="stApprove">0</span></div>
+        <div class="stat"><span>工具调用</span><span class="sv" id="stTools">0</span></div>
+      </details>
     </div>
   </div>
 
@@ -306,8 +352,8 @@
       <label>Model<input id="ck_model" type="text" placeholder="deepseek-chat" /></label>
       <div id="credStatus" style="font-size:12px;color:var(--text2)"></div>
       <div class="row">
-        <button type="submit">保存(Keychain)</button>
-        <button type="button" class="ghost" onclick="closeCreds()">关闭</button>
+        <button type="submit" class="btn-primary">保存(Keychain)</button>
+        <button type="button" class="btn-plain" onclick="closeCreds()">关闭</button>
       </div>
     </form>
   </div>
@@ -317,8 +363,11 @@
     let es, currentConvId = null;
     let roundCount = 0, denyCount = 0, approveCount = 0, toolCount = 0;
     let turnCount = 0;
-    let typingTimer = null;
-    let pendingSteps = [];  // 当前 agent 轮累积的步骤
+    let seqId = 0;                       // 全局自增 id(替代 Date.now(),防同毫秒冲突)
+    let typingJobs = {};                 // elementId -> interval(打字机任务表,支持跳过)
+    let pendingSteps = [];               // 当前 agent 轮累积的步骤
+
+    function nid() { return ++seqId; }
 
     // ═══════ 初始化 ═══════
     document.addEventListener('DOMContentLoaded', () => {
@@ -334,8 +383,7 @@
       if (!task) return;
       if (es) { es.close(); es = null; }
 
-      // 停止上次的打字动画
-      if (typingTimer) { clearInterval(typingTimer); typingTimer = null; }
+      clearTyping();
 
       // 移除空状态
       const empty = document.getElementById('emptyChat');
@@ -376,8 +424,6 @@
 
     // ═══════ 事件处理 ═══════
     function handleEvent(e) {
-      const chat = document.getElementById('chat-messages');
-
       if (e.type === 'loop_stopped') {
         // 把之前累积的步骤渲染出来
         if (pendingSteps.length > 0) {
@@ -412,7 +458,7 @@
         if (el) {
           el.style.opacity = '0.4';
           el.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
-          el.innerHTML += `<div style="font-size:12px;color:var(--danger);margin-top:4px;">⏱️ 审批超时(${e.timeout_sec}s 未响应),已按拒绝处理</div>`;
+          el.insertAdjacentHTML('beforeend', `<div class="approval-note">⏱️ 审批超时(${e.timeout_sec}s 未响应),已按拒绝处理</div>`);
         }
         return;
       }
@@ -429,13 +475,13 @@
         return;
       }
 
-      // 工具调用/护栏判定 → 加入待渲染步骤
+      // 工具动作事件(后端已合并 guardrail 判定 + 结果 + 反馈为单个 action 事件)
       roundCount++;
       toolCount++;
       updateStat('stRound', roundCount);
       updateStat('stTools', toolCount);
 
-      const actionName = e.type || '?';
+      const actionName = e.action || e.type || '?';
       const icon = ACTION_ICONS[actionName] || '🔧';
       const verdict = e.verdict || '';
       const fb = e.feedback;
@@ -454,29 +500,29 @@
         icon, actionName, intent: e.intent || '',
         verdict, stepClass,
         ok: e.ok, fb,
-        id: 'step-' + roundCount + '-' + Date.now(),
+        id: 'step-' + nid(),
       });
     }
 
     // ═══════ 渲染函数 ═══════
     function appendUserBubble(text) {
       const chat = document.getElementById('chat-messages');
-      chat.innerHTML += `<div class="msg-user"><div class="bubble">${esc(text)}</div></div>`;
+      chat.insertAdjacentHTML('beforeend', `<div class="msg-user"><div class="bubble">${esc(text)}</div></div>`);
       chat.scrollTop = chat.scrollHeight;
     }
 
     function appendAgentBubble(text) {
       const chat = document.getElementById('chat-messages');
-      const id = 'ab-' + Date.now();
-      chat.innerHTML += `<div class="msg-agent" id="${id}">
+      const id = 'ab-' + nid();
+      chat.insertAdjacentHTML('beforeend', `<div class="msg-agent" id="${id}">
         <div class="avatar">🤖</div>
-        <div class="bubble streaming" id="${id}-text"></div>
-      </div>`;
+        <div class="bubble streaming streamable" id="${id}-text" onclick="skipType('${id}-text')" title="点击跳过动画"></div>
+      </div>`);
       chat.scrollTop = chat.scrollHeight;
       typeText(id + '-text', text, () => {
         // 动画完成后移除 streaming 光标
         const el = document.getElementById(id + '-text');
-        if (el) el.classList.remove('streaming');
+        if (el) { el.classList.remove('streaming'); el.classList.remove('streamable'); }
       });
     }
 
@@ -487,28 +533,28 @@
       for (const s of steps) {
         html += `<span class="step-mini ${s.stepClass}" onclick="toggleStepDetail('${s.id}')" title="${esc(s.intent)}">
           <span class="si-icon">${s.icon}</span>
-          <span class="si-name">${s.actionName}</span>
-          ${s.stepClass === 'pass' ? '<span style="color:var(--success)">✅</span>' : ''}
-          ${s.stepClass === 'deny' ? '<span style="color:var(--danger)">🚫</span>' : ''}
+          <span class="si-name">${esc(s.actionName)}</span>
+          ${s.stepClass === 'pass' ? '<span class="si-ok">✅</span>' : ''}
+          ${s.stepClass === 'deny' ? '<span class="si-deny">🚫</span>' : ''}
         </span>`;
         // 详情面板
         html += `<div class="step-detail" id="${s.id}-detail">
           ${s.intent ? `<div class="kv"><k>intent</k> ${esc(s.intent)}</div>` : ''}
           ${s.verdict ? `<div class="kv"><k>护栏</k> ${esc(s.verdict)}</div>` : ''}
-          ${s.fb ? `<div class="kv"><k>反馈</k> ${s.fb.status} — ${esc(s.fb.summary||'')}</div>` : ''}
+          ${s.fb ? `<div class="kv"><k>反馈</k> ${esc(s.fb.status)} — ${esc(s.fb.summary||'')}</div>` : ''}
         </div>`;
       }
       html += '</div>';
-      chat.innerHTML += html;
+      chat.insertAdjacentHTML('beforeend', html);
       chat.scrollTop = chat.scrollHeight;
     }
 
     function appendError(msg) {
       const chat = document.getElementById('chat-messages');
-      chat.innerHTML += `<div class="msg-agent">
+      chat.insertAdjacentHTML('beforeend', `<div class="msg-agent">
         <div class="avatar">❌</div>
-        <div class="bubble" style="background:#fef2f2;border-color:#fecaca;color:var(--danger)">${esc(msg)}</div>
-      </div>`;
+        <div class="bubble err">${esc(msg)}</div>
+      </div>`);
       chat.scrollTop = chat.scrollHeight;
     }
 
@@ -520,15 +566,15 @@
         pendingSteps = [];
       }
       const id = 'appr-' + e.approval_id;
-      chat.innerHTML += `<div class="approval-inline" id="${id}">
+      chat.insertAdjacentHTML('beforeend', `<div class="approval-inline" id="${id}">
         <div style="font-weight:600">⚠️ 需要审批</div>
         <div style="font-size:12px;color:var(--text2);margin-top:2px;">${esc(e.reason||'')}</div>
         <div style="font-size:12px;color:var(--text2)">intent: ${esc(e.intent||'')}</div>
         <div class="btns">
-          <button onclick="approve('${e.approval_id}',true)">✅ 通过</button>
-          <button class="ghost" style="background:var(--danger);color:#fff" onclick="approve('${e.approval_id}',false)">❌ 拒绝</button>
+          <button class="btn-ok" onclick="approve('${e.approval_id}',true)">✅ 通过</button>
+          <button class="btn-danger" onclick="approve('${e.approval_id}',false)">❌ 拒绝</button>
         </div>
-      </div>`;
+      </div>`);
       chat.scrollTop = chat.scrollHeight;
     }
 
@@ -546,7 +592,7 @@
         if (el) {
           el.style.opacity = '0.4';
           el.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
-          el.innerHTML += '<div style="font-size:12px;color:var(--danger);margin-top:4px;">⏱️ 审批已超时失效,已按拒绝处理</div>';
+          el.insertAdjacentHTML('beforeend', '<div class="approval-note">⏱️ 审批已超时失效,已按拒绝处理</div>');
         }
       });
     }
@@ -554,7 +600,7 @@
     // ═══════ 新会话 ═══════
     function newSession() {
       if (es) { es.close(); es = null; }
-      if (typingTimer) { clearInterval(typingTimer); typingTimer = null; }
+      clearTyping();
       currentConvId = null;
       roundCount = 0; denyCount = 0; approveCount = 0; toolCount = 0; turnCount = 0;
       pendingSteps = [];
@@ -562,7 +608,7 @@
       chat.innerHTML = `<div class="empty-chat" id="emptyChat">
         <div class="icon">🤖</div>
         <div>输入任务开始对话</div>
-        <div style="font-size:12px;margin-top:4px;">agent 会读取代码、运行测试、回复你的问题</div>
+        <div class="sub">agent 会读取代码、运行测试、回复你的问题</div>
       </div>`;
       resetPanel();
       document.getElementById('btnSend').disabled = false;
@@ -600,7 +646,7 @@
     function loadConversation(convId) {
       // 切换活跃对话:关闭当前流,清空聊天区,从存储加载历史消息
       if (es) { es.close(); es = null; }
-      if (typingTimer) { clearInterval(typingTimer); typingTimer = null; }
+      clearTyping();
       currentConvId = convId;
       pendingSteps = [];
       roundCount = 0; denyCount = 0; approveCount = 0; toolCount = 0; turnCount = 0;
@@ -618,42 +664,49 @@
 
         for (const t of conv.turns) {
           if (t.role === 'user') {
-            chat.innerHTML += `<div class="msg-user"><div class="bubble">${esc(t.content)}</div></div>`;
+            chat.insertAdjacentHTML('beforeend', `<div class="msg-user"><div class="bubble">${esc(t.content)}</div></div>`);
             turnCount++;
           } else {
             // agent 回复文本
             if (t.content) {
-              chat.innerHTML += `<div class="msg-agent">
+              chat.insertAdjacentHTML('beforeend', `<div class="msg-agent">
                 <div class="avatar">🤖</div>
                 <div class="bubble">${esc(t.content)}</div>
-              </div>`;
+              </div>`);
             }
-            // 工具步骤
+            // 工具步骤(可点击展开详情)
             if (t.steps && t.steps.length > 0) {
               const iconSteps = t.steps.filter(s => s.type !== 'response' && s.type !== 'loop_stopped' && s.type !== 'error');
               if (iconSteps.length > 0) {
                 let html = '<div class="tool-steps">';
                 for (const s of iconSteps) {
-                  const actionName = s.type || '?';
+                  const actionName = s.action || s.type || '?';
                   const icon = ACTION_ICONS[actionName] || '🔧';
                   const fb = s.feedback;
                   let cls = '';
                   if (s.verdict === 'Deny') cls = 'deny';
                   else if (fb && fb.status === 'PASS') cls = 'pass';
-                  html += `<span class="step-mini ${cls}">
+                  const hid = 'hstep-' + nid();
+                  html += `<span class="step-mini ${cls}" onclick="toggleStepDetail('${hid}')" title="${esc(s.intent||'')}">
                     <span class="si-icon">${icon}</span>
-                    <span class="si-name">${actionName}</span>
-                    ${cls === 'pass' ? '<span style="color:var(--success)">✅</span>' : ''}
+                    <span class="si-name">${esc(actionName)}</span>
+                    ${cls === 'pass' ? '<span class="si-ok">✅</span>' : ''}
+                    ${cls === 'deny' ? '<span class="si-deny">🚫</span>' : ''}
                   </span>`;
+                  html += `<div class="step-detail" id="${hid}-detail">
+                    ${s.intent ? `<div class="kv"><k>intent</k> ${esc(s.intent)}</div>` : ''}
+                    ${s.verdict ? `<div class="kv"><k>护栏</k> ${esc(s.verdict)}</div>` : ''}
+                    ${fb ? `<div class="kv"><k>反馈</k> ${esc(fb.status)} — ${esc(fb.summary||'')}</div>` : ''}
+                  </div>`;
                 }
                 html += '</div>';
-                chat.innerHTML += html;
+                chat.insertAdjacentHTML('beforeend', html);
               }
             }
             // 错误
             for (const s of (t.steps || [])) {
               if (s.type === 'error') {
-                chat.innerHTML += `<div class="msg-agent"><div class="avatar">❌</div><div class="bubble" style="background:#fef2f2;border-color:#fecaca;color:var(--danger)">${esc(s.msg||'')}</div></div>`;
+                chat.insertAdjacentHTML('beforeend', `<div class="msg-agent"><div class="avatar">❌</div><div class="bubble err">${esc(s.msg||'')}</div></div>`);
               }
             }
           }
@@ -740,13 +793,13 @@
         const chat = document.getElementById('chat-messages');
         const empty = document.getElementById('emptyChat');
         if (empty) empty.style.display = 'none';
-        chat.innerHTML += `<div class="msg-agent">
+        chat.insertAdjacentHTML('beforeend', `<div class="msg-agent">
           <div class="avatar">📄</div>
           <div class="bubble" style="max-width:90%">
             <div style="font-size:11px;color:var(--text2);margin-bottom:4px">📄 ${esc(path)} (${d.size||0} 字节)</div>
             <pre style="background:#f9fafb;border-radius:4px;padding:8px;overflow-x:auto;font-size:11px;max-height:300px;overflow-y:auto;margin:0">${esc(d.content||'')}</pre>
           </div>
-        </div>`;
+        </div>`);
         chat.scrollTop = chat.scrollHeight;
       });
     }
@@ -762,20 +815,40 @@
       if (!el) return;
       let i = 0;
       el.textContent = '';
+      el.dataset.full = text;            // 存完整文本,供点击跳过时补全
       el.classList.add('streaming');
-      if (typingTimer) clearInterval(typingTimer);
-      typingTimer = setInterval(() => {
+      clearJob(elementId);
+      typingJobs[elementId] = setInterval(() => {
         if (i < text.length) {
           el.textContent += text.charAt(i);
           i++;
-          document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+          const chat = document.getElementById('chat-messages');
+          chat.scrollTop = chat.scrollHeight;
         } else {
-          clearInterval(typingTimer);
-          typingTimer = null;
+          clearJob(elementId);
           el.classList.remove('streaming');
           if (onDone) onDone();
         }
       }, 12);
+    }
+
+    // 点击气泡跳过打字机动画,立即显示完整文本
+    function skipType(elementId) {
+      const job = typingJobs[elementId];
+      if (!job) return;
+      clearJob(elementId);
+      const el = document.getElementById(elementId);
+      if (el) {
+        el.textContent = el.dataset.full || el.textContent;
+        el.classList.remove('streaming');
+      }
+    }
+
+    function clearJob(elementId) {
+      if (typingJobs[elementId]) { clearInterval(typingJobs[elementId]); delete typingJobs[elementId]; }
+    }
+    function clearTyping() {
+      for (const k in typingJobs) clearJob(k);
     }
 
     function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -791,7 +864,7 @@
     // ═══════ 配置与模式 ═══════
     function loadConfig() {
       fetch('/api/config').then(r => r.json()).then(c => {
-        document.getElementById('modeBadge').textContent = c.mode;
+        document.getElementById('modeBadge').textContent = (c.mode === 'mock' ? 'mock' : 'real') + ' ⇄';
         document.getElementById('modeBadge').className = 'badge badge-' + (c.mode === 'mock' ? 'mock' : 'real');
         document.getElementById('wsLabel').textContent = (c.workspace || './workspace').split('/').pop() || 'workspace';
         document.getElementById('btnWorkspace').title = '工作目录: ' + (c.workspace || './workspace');
@@ -846,10 +919,10 @@
 
     function toggleMode() {
       const cur = document.getElementById('modeBadge').textContent;
-      const next = cur === 'mock' ? 'real' : 'mock';
+      const next = cur.indexOf('mock') >= 0 ? 'real' : 'mock';
       fetch('/api/config/mode', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode:next})})
         .then(r => r.json()).then(d => {
-          document.getElementById('modeBadge').textContent = d.mode;
+          document.getElementById('modeBadge').textContent = (d.mode === 'mock' ? 'mock' : 'real') + ' ⇄';
           document.getElementById('modeBadge').className = 'badge badge-' + (d.mode === 'mock' ? 'mock' : 'real');
           updateStat('stMode', d.mode);
         });
