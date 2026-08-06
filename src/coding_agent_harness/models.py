@@ -39,7 +39,7 @@ class RunShell:
 
 @dataclass(frozen=True)
 class RunTests:
-    pass
+    path: str | None = None  # 可选:只跑指定测试文件/目录(相对 project_root),None 跑全套
 
 
 @dataclass(frozen=True)

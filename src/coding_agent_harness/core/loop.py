@@ -49,7 +49,12 @@ _AGENT_TOOLS = [
         "required": ["cmd", "intent"],
     }),
     ToolSchema("run_tests", "运行测试(pytest)", {
-        "type": "object", "properties": _INTENT_PROP, "required": ["intent"],
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "可选:只运行指定测试文件或目录(相对项目根,如 test_calc.py);省略则运行全部测试"},
+            **_INTENT_PROP,
+        },
+        "required": ["intent"],
     }),
     ToolSchema("stop", "任务完成,停止。在 reason 中描述你的修改内容和结果。", {
         "type": "object",
@@ -114,7 +119,11 @@ class AgentLoop:
             "\n- 用户说「列出/看看/有哪些文件」:调 list_dir → 直接文字回复看到了什么 → stop。**不要读文件内容,不要跑测试。**"
             "\n- 用户说「读一下/看看 xxx 文件的内容」:调 read_file → 文字回复文件内容/概述 → stop。**不要跑测试。**"
             "\n- 用户说「修复/修/改/fix xxx」:读→改→跑测试→文字回复结果→stop。**必须先看懂再改。**"
+            "\n- 用户说「只跑/运行 xxx 测试」:调 run_tests,path 填指定测试文件 → 文字回复结果 → stop。"
             "\n- 用户问问题/概念/解释:直接文字回复 → stop。**不要调任何工具。**"
+            "\n- 用户说「分析/评估/看看这个项目/代码质量/架构/哪里有问题」:先 list_dir 了解结构 → 读 1-3 个关键文件(不读无关文件)→ 文字给出分析 → stop。**不要改代码,不要跑测试(除非用户要求)。**"
+            "\n- 用户说「继续/然后呢/接着修/为什么/结果呢」等衔接词:基于对话历史中上一步的结果继续——若上一步失败(测试 FAIL)则继续修复并重测;若已完成则直接回复总结。"
+            "\n- 用户一次提出多个任务(「先…再…」「列出…并解释…」):**逐个完成**,每完成一步用文字汇报,全部完成后 stop。不要遗漏任何一项。"
             "\n\n## 严禁行为"
             "\n- 用户只让你列文件,你跑去读文件内容 → 违反规则"
             "\n- 用户只让你看文件,你跑去跑测试 → 违反规则"
@@ -122,10 +131,11 @@ class AgentLoop:
             "\n- 修改测试文件 → 绝对禁止。测试断言是真理。"
             + ("\n项目约定:\n" + "\n".join(convs) if convs else "")
         ))
-        msgs = [sys, Message("user", task)]
-        # 追加对话历史(之前各轮的 assistant 动作 + tool 结果),
-        # 让真实 LLM 拥有完整上下文记忆(mock 客户端忽略 messages,不受影响)。
+        msgs = [sys]
+        # 对话历史在前(时间顺序),新任务在最后——否则最新指令被夹在历史中间,
+        # 真实 LLM 会按错误的时间顺序理解上下文(mock 客户端忽略 messages,不受影响)。
         msgs.extend(self.conversation_history)
+        msgs.append(Message("user", task))
         if state.feedback_history:
             fb = state.feedback_history[-1]
             if fb.status == "FAIL":
@@ -249,18 +259,24 @@ class AgentLoop:
                 _consecutive_responds = getattr(self, '_consecutive_responds', 0)
                 _consecutive_responds += 1
                 self._consecutive_responds = _consecutive_responds
-                if _consecutive_responds >= 2:
+                if _consecutive_responds >= 3:
                     # LLM 连续回复文字但不 stop:自动结束,以 stopped 作为结局。
+                    # 阈值 3(非 2):允许"先说明发现、再补充细节"的分段回复,
+                    # 仅在连续 3 次无动作时才认定是只说不停。
                     outcome = "stopped"
                     self.on_event({"type": "response", "text": "(agent 回复完毕,自动停止)"})
                     break
-                # 注入提示让 LLM 调用 stop
-                state.context_injected.append("你已经完成了文字回复。如果回答完毕,请调用 stop。")
+                if _consecutive_responds == 2:
+                    # 第 2 段回复:提示可继续工具或 stop(不强制,避免误杀分段说明)
+                    state.context_injected.append(
+                        "你已经回复了两段文字。如果还有未完成的动作,请继续调用工具;如果回答完毕,请调用 stop。")
+                else:
+                    # 第 1 次回复:注入提示让 LLM 调用 stop
+                    state.context_injected.append("你已经完成了文字回复。如果回答完毕,请调用 stop。")
                 continue
             v = self.guard(turn.action, self.config)
             # 非 Respond 的工具调用:重置连续 Respond 计数。允许 Respond→Tool→Respond 模式。
             self._consecutive_responds = 0
-            self.on_event({"type": "guardrail_verdict", "verdict": type(v).__name__, "intent": turn.intent})
             vname = type(v).__name__
             if vname == "Deny":
                 tr = ToolResult(ok=False, output="", error=f"被护栏拒绝:{v.reason}")
@@ -289,7 +305,12 @@ class AgentLoop:
                 if isinstance(turn.action, RunTests) and tr.structured is not None:
                     fb = self.validator(tr.structured, self.config.feedback.max_traceback_excerpt_lines)
                     tr = ToolResult(ok=fb.status == "PASS", output=tr.output, structured=tr.structured, error=None)
-            self.on_event({"type": "tool_result", "ok": tr.ok, "feedback": _fb_to_dict(fb)})
+            # 合并为单个 action 事件:动作名 + 护栏判定 + 结果 + 反馈,
+            # 供前端渲染一个步骤胶囊(此前 guardrail_verdict/tool_result 两个事件
+            # 会让前端显示两个无动作名的内部胶囊)。
+            action_name = type(turn.action).__name__
+            self.on_event({"type": "action", "action": action_name, "intent": turn.intent,
+                           "verdict": vname, "ok": tr.ok, "feedback": _fb_to_dict(fb)})
             steps.append(Step(turn=turn, verdict=v, tool_result=tr, feedback=fb, ts=ts_provider()))
             # 记录本轮对话历史(下轮 _build_messages 时追加到消息列表),
             # 让真实 LLM 能基于之前的执行结果做下一步决策。
@@ -298,8 +319,14 @@ class AgentLoop:
             # 我们的 Message 抽象只有 role+content,无法表达
             # tool_calls/tool_call_id 结构;用 user 消息告知"上一步做了什么、
             # 结果是什么",让模型清楚知道需要继续输出下一个 function call。
-            action_name = type(turn.action).__name__
             output_text = tr.output if tr.output else (tr.error or "(无输出)")
+            # 回灌截断:整段截尾会让 agent 只见开头(读大文件时基于错误信息决策)。
+            # 改为保留头尾:测试输出给更大额度(validator 已结构化提取关键信息),
+            # 其余动作头 800 + 尾 700。
+            if action_name == "RunTests":
+                output_text = _truncate_middle(output_text, head=2000, tail=1000, limit=3000)
+            else:
+                output_text = _truncate_middle(output_text, head=800, tail=700, limit=1500)
             # 根据动作类型给不同的后续提示——不过度引导"下一步",
             # 让系统提示词的意图分流规则主导决策。
             if action_name in ("ListDir",):
@@ -385,6 +412,17 @@ class AgentLoop:
         self.memory.record_fix(Fix(
             category=cat.value, symptom=symptom, fix=fix, timestamp=ts_provider(),
         ))
+
+
+def _truncate_middle(text: str, head: int = 800, tail: int = 700, limit: int = 1500) -> str:
+    """超过 limit 时保留头 head + 尾 tail,中间以省略标记连接(确定性纯函数)。
+
+    整段截尾会丢失文件末尾/错误堆栈的关键信息;头尾保留让 agent 同时看到
+    开头与结尾,避免基于不完整信息决策。
+    """
+    if len(text) <= limit:
+        return text
+    return text[:head] + "\n…(中间截断)…\n" + text[-tail:]
 
 
 def _fb_to_dict(fb):

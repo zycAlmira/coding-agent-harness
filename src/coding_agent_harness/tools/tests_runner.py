@@ -27,14 +27,22 @@ def _clear_bytecode_cache(root: Path) -> None:
             pass
 
 
-def run_tests(config: Config) -> PytestRun:
+def run_tests(config: Config, path: str | None = None) -> PytestRun:
     # 以子进程方式调用当前解释器的 pytest,避免路径歧义;
     # capture_output 捕获 stdout/stderr,check=False 让非零退出码不抛异常;
     # 超时 120s 防止 hang。本函数只回灌结构化结果,是否 PASS/FAIL 交给 Validator。
     root = config.project_root
     _clear_bytecode_cache(root)
     args = list(config.feedback.pytest_args)
-    cmd = [sys.executable, "-m", "pytest", *args, str(root)]
+    if path:
+        # 安全边界:测试路径必须落在 project_root 内,防 ../ 逃逸(同文件工具围栏)
+        target = (root / path).resolve()
+        if not target.is_relative_to(root.resolve()):
+            raise ValueError(f"测试路径越界: {path}")
+        target = str(target)
+    else:
+        target = str(root)
+    cmd = [sys.executable, "-m", "pytest", *args, target]
     env = dict(os.environ)
     # 不再写 .pyc:配合每次跑前清缓存,彻底杜绝亚秒级 mtime 冲突导致的旧字节码命中。
     env["PYTHONDONTWRITEBYTECODE"] = "1"
