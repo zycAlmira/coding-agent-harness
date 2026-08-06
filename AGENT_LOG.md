@@ -128,3 +128,16 @@
 10. **CI 裸环境暴露依赖声明缺失**:`--frozen`/`--extra dev` 两连修——本地手工 sync 过的依赖会掩盖 pyproject 声明不完整。
 11. **外部约束驱动方案切换要清干净**:Fly.io 信用卡限制 → 阿里云,旧脚本保留为参考但 README 主路径更新,无死链接。
 12. **交互类 bug 靠人工试用暴露**:Respond 死循环(64bc27c)在真实使用中才发现;UI 打磨期的测试策略应是"测试守护核心机制 + 人工试用守护交互体验"。
+
+## 2026-08-06 交付前合规补全与工程修复(对照通用 §五 + §A.4 逐项核查后执行)
+
+- 触发:对照通用要求 + Project A 文件核查项目现状,发现 3 处硬缺口(§4.7 PLAN 无完成标记、§4.9 AGENT_LOG 截止 7/23、死配置 approval_timeout_sec)与 2 处工程改进点。
+- 技能:常规编辑(非 subagent 派发——收尾小项,主会话直接执行)。
+- 人工干预:无;用户决策"做第 3 组全部项"(文档合规 + 工程改进)。
+- **PLAN.md**(§4.7):24 个 task 标题补「**状态**:✅ 已完成 — commit: ...」,映射取自 AGENT_LOG 原始记录与 git log 核实。
+- **AGENT_LOG.md**(§4.9):补记 7/24–7/30 共 20 个 commit(真实 LLM 打磨→双平台 CI→阿里云部署→WebUI 重构→UI 细节),标注为事后补记(基于 commit 重建,不虚构 prompt),教训 8-12。
+- **审批超时实现**(死配置治理):`approval_timeout_sec` 从"定义了但从没生效"变为真实机制——`_suspend_for_approval` 返回三态,超时按拒绝处理(危险动作不执行)、发 `approval_timeout` 事件、审批失效;WebUI 按钮置灰 + 友好 404;integration 测试 0.1s 超时验证。**设计取舍:不引入系统时钟判定,超时由 threading.Event.wait(timeout) 承担,循环内仍零时钟**。
+- **对话历史截断**:`MAX_HISTORY_MESSAGES=30` + `_append_history` 统一入口(长会话真实 LLM 上下文保护),单元测截断边界。
+- **validator 三缺陷修复**(真实 pytest 端到端实测暴露):含空格参数化 nodeid(`\S+`→`.*?`)、header 末 token 错位(`_extract_name` 含 `[` 起提取)、pytest 截断 diff(`a...`)与 `AssertionError: assert` 前缀格式(分类回退与兼容)。TDD 先红后绿,端到端 4 失败全部正确分类。
+- 教训 13:**"配置项存在 ≠ 机制生效"**——dead config 是交付前核查的高价值目标(比新增功能更值得查)。
+- 教训 14:**真实 pytest 输出格式比想象中多形态**(含空格参数化、无短路信息的 AssertionError 前缀、超长 diff 截断),手工 fixture 会掩盖格式多样性——用真实 pytest 跑一次参数化用例做端到端验证,比纯手工构造 fixture 更能暴露解析缺陷。
