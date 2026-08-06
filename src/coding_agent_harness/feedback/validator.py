@@ -15,10 +15,11 @@ from coding_agent_harness.feedback.taxonomy import FailureCategory
 
 # FAILED tests/test_calc.py::test_add - assert 4 == 5
 # ERROR tests/test_x.py::test_x(无 diff 段)
-_FAILED_LINE = re.compile(r"^(?:FAILED|ERROR) (?P<nodeid>\S+)(?: - (?P<diff>.*))?$")
+# 注意 nodeid 用 `.*?` 而非 `\S+`:参数化用例名可含空格(如
+# `test_echo[hello world]`),`\S+` 在空格处截断致整行不匹配、fail_index 为空。
+_FAILED_LINE = re.compile(r"^(?:FAILED|ERROR) (?P<nodeid>.*?)(?: - (?P<diff>.*))?$")
 # _________________________________ test_add ___________________________________
 # _____________________________ ERROR at setup of test_x ________________________
-# 取中段最后一个 token 作为测试名(test_add / test_x)
 _FAIL_HEADER = re.compile(r"^_+ (?P<middle>.+?) _+$")
 # tests/test_calc.py:5: AssertionError   (--tb=line / 手工 fixture 的位置行,带 err 词)
 _TB_LOC = re.compile(r"^(?P<file>[^\s]+):(?P<line>\d+): (?P<err>\w+Error)$")
@@ -28,8 +29,11 @@ _TB_LOC_SHORT = re.compile(r"^(?P<file>[^\s]+):(?P<line>\d+): in \S+$")
 # ================ FAILURES ================ / ============ short test summary info ============
 # 分节分隔行,标志一个失败块结束。
 _SECTION_SEP = re.compile(r"^=+ .+ =+$")
-# E       assert 4 == 5 —— assertion_diff 的兜底来源
-_ASSERT_LINE = re.compile(r"E\s+assert\s+(?P<diff>.+)")
+# E       assert 4 == 5 —— assertion_diff 的兜底来源;
+# 兼容两种真实 pytest 格式:短路信息 `E   assert 6 == 5`
+# 与完整异常 `E   AssertionError: assert 'hello world' == 'different'`
+# (无短路信息时 E 行带 AssertionError 前缀)。
+_ASSERT_LINE = re.compile(r"E\s+(?:AssertionError:\s*)?assert\s+(?P<diff>.+)")
 # 1 failed, 1 passed in 0.05s / = 1 error in 0.04s =
 _SUMMARY = re.compile(r"(\d+) (failed|passed|error)")
 
@@ -88,10 +92,9 @@ class Validator:
                 # 进入新失败块前,flush 上一块(若有)。
                 _flush_failed(failed, cur_nodeid, pending, excerpt, fail_index, max_excerpt_lines)
                 pending = None
-                # header 中段取最后一个 token 作为测试名(test_add / test_x);
-                # nodeid 在 FAIL_HEADER 捕获不到全路径,改从 fail_index 中按名匹配
-                name = mh.group("middle").split()[-1]
-                cur_nodeid = _match_nodeid_by_name(fail_index, name)
+                # header 中段提取测试名;nodeid 在 FAIL_HEADER 捕获不到全路径,
+                # 改从 fail_index 中按名匹配。
+                cur_nodeid = _match_nodeid_by_name(fail_index, _extract_name(mh.group("middle")))
                 excerpt = []
                 continue
             if cur_nodeid is None:
@@ -123,6 +126,22 @@ class Validator:
         return Feedback(status=status, failed_tests=failed, passed_count=passed, summary=summary)
 
 
+def _extract_name(middle: str) -> str:
+    """从失败块 header 中段提取测试名。
+
+    兼容三种形态:
+    - 非参数化 `test_add` → 取最后一个 token;
+    - 参数化含空格 `test_echo[hello world]` → 取含 `[` 的 token 起 join 到末尾
+      (末 token 是 `world]`,`split()[-1]` 会取错);
+    - 说明词前缀 `ERROR at setup of test_x[param]` → 跳过说明词取含 `[` 的 token。
+    """
+    tokens = middle.split()
+    for i, t in enumerate(tokens):
+        if "[" in t:
+            return " ".join(tokens[i:])
+    return tokens[-1]
+
+
 def _match_nodeid_by_name(index: dict[str, str | None], name: str) -> str | None:
     """从 fail_index 中找到 `::` 后名字匹配的 nodeid;找不到回退到第一个。"""
     for nid in index:
@@ -142,8 +161,9 @@ def _flush_failed(failed, nodeid, pending, excerpt, fail_index, max_excerpt_line
         return
     file, line, err = pending
     diff = fail_index.get(nodeid)
-    # 兜底:FAILED 行无 diff 时,从 traceback 内 `E  assert` 行抽
-    if diff is None:
+    # 兜底:FAILED 行无 diff 或 diff 是 pytest 截断形式(`a...`,超长短路信息
+    # 被截断,无分类价值)时,从 traceback 内 `E  assert` 行抽完整 diff。
+    if diff is None or (diff.endswith("...") and len(diff) <= 50):
         for e in excerpt:
             am = _ASSERT_LINE.search(e)
             if am:

@@ -77,3 +77,22 @@ def test_assertion_diff_from_e_line_fallback():
     assert ft.assertion_diff is not None
     assert "assert" in ft.assertion_diff
     assert ft.assertion_diff == "assert 7 == 42"
+
+
+def test_parametrized_nodeid_with_spaces():
+    """参数化用例名含空格:header 末 token 提取会错位(split()[-1] 取到 `world]`),
+    须按「含 [ 的 token 起」提取完整测试名,nodeid 不得错位。
+    同时覆盖真实 pytest 的 `E   AssertionError: assert ...` 行格式
+    (无短路信息时 E 行带 AssertionError 前缀,_ASSERT_LINE 须兼容两种格式)。
+    """
+    fb = Validator.parse(_run("param_spaces.txt"))
+    assert fb.status == "FAIL"
+    assert len(fb.failed_tests) == 2
+    ids = [ft.nodeid for ft in fb.failed_tests]
+    assert ids == [
+        "/tmp/param_fix/test_param.py::test_echo[hello world]",
+        "/tmp/param_fix/test_param.py::test_echo[with space]",
+    ], f"nodeid 错位: {ids}"
+    for ft in fb.failed_tests:
+        assert ft.category is FailureCategory.AssertionFailure, ft.category
+        assert ft.assertion_diff is not None and "==" in ft.assertion_diff, ft.assertion_diff

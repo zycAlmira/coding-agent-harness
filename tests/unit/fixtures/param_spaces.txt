@@ -1,0 +1,14 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____________________________ test_echo[hello world] ____________________________
+/tmp/param_fix/test_param.py:12: in test_echo
+    assert name == "different"
+E   AssertionError: assert 'hello world' == 'different'
+____________________________ test_echo[with space] _____________________________
+/tmp/param_fix/test_param.py:12: in test_echo
+    assert name == "different"
+E   AssertionError: assert 'with space' == 'different'
+=========================== short test summary info ============================
+FAILED /tmp/param_fix/test_param.py::test_echo[hello world]
+FAILED /tmp/param_fix/test_param.py::test_echo[with space]
+2 failed, 2 passed in 0.01s
