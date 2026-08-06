@@ -3,7 +3,7 @@ from coding_agent_harness.llm.base import Message
 from coding_agent_harness.llm.mock import MockLLMClient
 from coding_agent_harness.memory.store import Memory
 from coding_agent_harness.config import load_config
-from coding_agent_harness.models import WriteFile, RunTests, Stop
+from coding_agent_harness.models import WriteFile, RunTests, Stop, Respond, AssistantTurn
 import yaml
 import tempfile
 from pathlib import Path
@@ -68,3 +68,56 @@ def test_conversation_history_trimmed(tmp_path):
     for i in range(5):
         loop._append_history(Message("user", f"m{i}"))
     assert len(loop.conversation_history) == 5
+
+
+class _RecordingLLM:
+    """记录每次 complete 收到的 messages,验证上下文组织顺序。"""
+    def __init__(self):
+        self.calls = []
+    def complete(self, messages, tools, state):
+        self.calls.append(list(messages))
+        n = len(self.calls)
+        if n == 1:
+            return AssistantTurn(action=Respond("你好,我是 agent"), intent="回复", raw="x")
+        return AssistantTurn(action=Stop("done"), intent="完成", raw="x")
+
+
+def test_message_order_history_before_new_task(tmp_path):
+    """第二轮起消息顺序应为 [system, *历史, user(新任务), *反馈/提示]:
+    新任务必须排在历史之后(时间顺序),否则 LLM 把最新指令夹在历史中间。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    llm = _RecordingLLM()
+    loop = AgentLoop(llm=llm, config=cfg, memory=mem)
+    loop.run(task="修 bug", ts_provider=lambda: "2026-07-22T00:00:00")
+    # 第 1 轮:Respond;第 2 轮:Stop
+    assert len(llm.calls) >= 2
+    second = llm.calls[1]
+    roles = [m.role for m in second]
+    # system 开头,随后是历史(assistant),新任务(user)在历史之后
+    assert roles[0] == "system"
+    assert "assistant" in roles
+    task_idx = roles.index("user")
+    assert any(m.role == "assistant" for m in second[:task_idx]), "新任务之前应已有历史(assistant)"
+    assert second[task_idx].content == "修 bug"
+
+
+def test_loop_respond_twice_then_stop_via_prompt(tmp_path):
+    """连续 2 次 Respond 不再自动停机(放宽到 3 次,防止误杀分段回复);
+    第 3 次仍触发自动停机。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    mock = MockLLMClient([
+        {"when": "round 1", "action": Respond("第一段说明"), "intent": "回复"},
+        {"when": "round 2", "action": Respond("第二段补充"), "intent": "回复"},
+        {"when": "round 3", "action": Respond("第三段"), "intent": "回复"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    result = loop.run(task="随便聊聊", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    responds = [s for s in result.steps if isinstance(s.turn.action, Respond)]
+    assert len(responds) == 3, "连续 2 次 Respond 不应自动停机(放宽到 3 次)"
