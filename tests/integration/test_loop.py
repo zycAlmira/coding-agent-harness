@@ -1,4 +1,5 @@
-from coding_agent_harness.core.loop import AgentLoop
+from coding_agent_harness.core.loop import AgentLoop, MAX_HISTORY_MESSAGES
+from coding_agent_harness.llm.base import Message
 from coding_agent_harness.llm.mock import MockLLMClient
 from coding_agent_harness.memory.store import Memory
 from coding_agent_harness.config import load_config
@@ -46,3 +47,24 @@ def test_loop_red_to_green(tmp_path):
     result = loop.run(task="修 add 的 bug", ts_provider=lambda: "2026-07-22T00:00:00")
     assert result.outcome == "stopped"  # PASS 后 agent 显式 Stop(不再自动判 success)
     assert any(s.turn.intent == "上次断言失败,改 off-by-one" for s in result.steps)
+
+
+def test_conversation_history_trimmed(tmp_path):
+    """长会话下对话历史被截断到 MAX_HISTORY_MESSAGES 上限,保留最新消息。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    loop = AgentLoop(llm=MockLLMClient([]), config=cfg, memory=mem)
+    n = MAX_HISTORY_MESSAGES + 20  # 超出上限
+    for i in range(n):
+        loop._append_history(Message("user", f"msg-{i}"))
+    assert len(loop.conversation_history) == MAX_HISTORY_MESSAGES
+    # 保留最新:最早被丢弃的应是第 n - MAX 条
+    assert loop.conversation_history[0].content == f"msg-{n - MAX_HISTORY_MESSAGES}"
+    assert loop.conversation_history[-1].content == f"msg-{n - 1}"
+    # 未超上限时不截断
+    loop.conversation_history = []
+    for i in range(5):
+        loop._append_history(Message("user", f"m{i}"))
+    assert len(loop.conversation_history) == 5

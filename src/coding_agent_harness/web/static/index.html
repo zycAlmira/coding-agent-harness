@@ -406,6 +406,17 @@
         return;
       }
 
+      if (e.type === 'approval_timeout') {
+        // 审批超时:按钮置灰失效,提示已按拒绝处理
+        const el = document.getElementById('appr-' + e.approval_id);
+        if (el) {
+          el.style.opacity = '0.4';
+          el.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+          el.innerHTML += `<div style="font-size:12px;color:var(--danger);margin-top:4px;">⏱️ 审批超时(${e.timeout_sec}s 未响应),已按拒绝处理</div>`;
+        }
+        return;
+      }
+
       if (e.type === 'response') {
         // agent 文本回复:独立气泡,打字机流式渲染
         // 先把之前的步骤渲染出来
@@ -525,9 +536,18 @@
       if (!currentConvId) return;
       fetch(`/api/tasks/${currentConvId}/approvals/${aid}`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision})
-      }).then(() => {
+      }).then((r) => {
+        if (!r.ok) throw new Error('审批已失效');
         const el = document.getElementById('appr-' + aid);
         if (el) el.style.opacity = '0.4';
+      }).catch(() => {
+        // 审批超时后按钮仍可被点击:置灰并提示,不产生 500
+        const el = document.getElementById('appr-' + aid);
+        if (el) {
+          el.style.opacity = '0.4';
+          el.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+          el.innerHTML += '<div style="font-size:12px;color:var(--danger);margin-top:4px;">⏱️ 审批已超时失效,已按拒绝处理</div>';
+        }
       });
     }
 

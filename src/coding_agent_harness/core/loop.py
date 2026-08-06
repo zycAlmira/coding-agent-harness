@@ -62,6 +62,11 @@ _AGENT_TOOLS = [
 ]
 
 
+# 对话历史条数上限:长会话下防止上下文无限膨胀(真实 LLM 上下文窗口有限),
+# 超过则丢弃最早的条目,保留最新上下文。mock 客户端忽略 messages,不受影响。
+MAX_HISTORY_MESSAGES = 30
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -90,6 +95,12 @@ class AgentLoop:
         self._new_approval = threading.Event()    # 有 pending 审批出现时 set(供外部等待)
         self._decision_ready = threading.Event()  # approve() 调用后 set(唤醒挂起的循环)
         self.conversation_history: list[Message] = []  # 对话历史:每轮追加 assistant + tool 消息
+
+    def _append_history(self, msg: Message) -> None:
+        """追加一条对话历史,超上限时丢弃最早的条目(保留最新上下文)。"""
+        self.conversation_history.append(msg)
+        if len(self.conversation_history) > MAX_HISTORY_MESSAGES:
+            del self.conversation_history[: len(self.conversation_history) - MAX_HISTORY_MESSAGES]
 
     def _build_messages(self, task: str, state: LoopState) -> list[Message]:
         convs = self.memory.load_conventions()
@@ -137,14 +148,18 @@ class AgentLoop:
             msgs.append(Message("system", c))
         return msgs
 
-    def _suspend_for_approval(self, action, verdict, intent: str = "") -> tuple[str, bool]:
-        """登记一条 pending 审批并挂起循环,阻塞到 approve() 唤醒。
+    def _suspend_for_approval(self, action, verdict, intent: str = "") -> tuple[str, bool, bool]:
+        """登记一条 pending 审批并挂起循环,阻塞到 approve() 唤醒或超时。
 
-        返回 (approval_id, decision)。挂起前先发 pending_approval 事件(含
+        返回 (approval_id, decision, timed_out)。挂起前先发 pending_approval 事件(含
         approval_id/reason/intent),供 WebUI 渲染审批按钮(§A.6 ① 弹审批→人类决定链路)。
         挂起用 threading.Event,不取系统时间做判定,不依赖 LLM——人类决定经 approve()
         注入后才恢复,机制本身在给定 decision 下确定(§A.4 可单测)。唤醒后在同一把锁内
         原子取回 decision 并清空 pending,避免 run 线程与潜在的双击 approve 在锁外竞态。
+
+        审批超时(approval_timeout_sec,来自 config.guardrails):等待超过阈值仍无人
+        决定,按拒绝处理(timed_out=True),并发出 approval_timeout 事件供前端置灰按钮;
+        已挂起的审批随即失效,之后 approve() 抛 KeyError。
 
         注意:hitl_enabled=True 时 run() 会阻塞在此,必须在独立线程调用 run()
         (否则主线程永久挂起);由 WebUI/CLI 的驱动方负责线程化。
@@ -162,13 +177,17 @@ class AgentLoop:
         reason = getattr(verdict, "reason", "")
         self.on_event({"type": "pending_approval", "approval_id": aid,
                         "reason": reason, "intent": intent})
-        # 阻塞:等待人类 approve。无超时——挂起即等待人类决策。
-        self._decision_ready.wait()
+        # 阻塞:等待人类 approve,超时按拒绝处理(不执行危险动作)。
+        timeout = self.config.guardrails.approval_timeout_sec
+        got = self._decision_ready.wait(timeout=timeout)
         with self._lock:
             p = self._pending_approval
-            decision = bool(p["decision"]) if p else False
+            decision = bool(p["decision"]) if p and got else False
             self._pending_approval = None
-        return aid, decision
+        if not got:
+            self.on_event({"type": "approval_timeout", "approval_id": aid,
+                           "timeout_sec": timeout, "reason": reason, "intent": intent})
+        return aid, decision, not got
 
     def approve(self, approval_id: str, decision: bool) -> None:
         """人类对 pending 审批给出决定并唤醒挂起的循环。
@@ -224,7 +243,7 @@ class AgentLoop:
             # 说明 LLM 只是在反复说话不停止,自动结束循环防止死循环。
             if isinstance(turn.action, Respond):
                 self.on_event({"type": "response", "text": turn.action.text})
-                self.conversation_history.append(Message("assistant", turn.action.text[:2000]))
+                self._append_history(Message("assistant", turn.action.text[:2000]))
                 steps.append(Step(turn=turn, verdict=None, tool_result=ToolResult(ok=True, output=turn.action.text), feedback=None, ts=ts_provider()))
                 # 连续 Respond 计数:上次也是 Respond 则加 1,否则从 1 开始。
                 _consecutive_responds = getattr(self, '_consecutive_responds', 0)
@@ -248,8 +267,8 @@ class AgentLoop:
                 fb = None
             elif vname == "NeedsApproval":
                 if self.hitl_enabled:
-                    # HITL 完整化:挂起循环等人类审批,据决定执行或回灌"被拒"
-                    aid, decision = self._suspend_for_approval(turn.action, v, turn.intent)
+                    # HITL 完整化:挂起循环等人类审批,据决定执行或回灌"被拒";超时按拒绝处理
+                    aid, decision, timed_out = self._suspend_for_approval(turn.action, v, turn.intent)
                     if decision:
                         tr = self.dispatch(turn.action, self.config)
                         fb = None
@@ -257,7 +276,8 @@ class AgentLoop:
                             fb = self.validator(tr.structured, self.config.feedback.max_traceback_excerpt_lines)
                             tr = ToolResult(ok=fb.status == "PASS", output=tr.output, structured=tr.structured, error=None)
                     else:
-                        tr = ToolResult(ok=False, output="", error=f"被拒:{v.reason}")
+                        prefix = "审批超时" if timed_out else "被拒"
+                        tr = ToolResult(ok=False, output="", error=f"{prefix}:{v.reason}")
                         fb = None
                 else:
                     # 非 HITL:回灌"需审批"字符串,不挂起(保持 Task 15 行为)
@@ -292,7 +312,7 @@ class AgentLoop:
                 next_hint = "修改已写入。如果需要验证请跑测试;如果只是添加/修改文件,用文字说明改了什么,然后 stop 或继续下一步。"
             else:
                 next_hint = "请基于以上结果,判断任务是否完成。完成了就用文字总结然后 stop,否则继续。"
-            self.conversation_history.append(Message(
+            self._append_history(Message(
                 "user",
                 f"[上一步] {action_name}: {turn.intent}\n"
                 f"[结果]\n{output_text[:1500]}\n\n{next_hint}"

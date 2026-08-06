@@ -470,7 +470,11 @@ def create_app(
         entry = _active.get(conv_id)
         if entry is None:
             raise HTTPException(status_code=404, detail="unknown id")
-        entry["loop"].approve(aid, req.decision)
+        try:
+            entry["loop"].approve(aid, req.decision)
+        except KeyError:
+            # 审批已处理或已超时失效:前端按钮尚在时点击,返回友好 404 而非 500。
+            raise HTTPException(status_code=404, detail="审批不存在或已过期(超时)")
         return {"ok": True, "approved": req.decision}
 
     @app.get("/api/tasks/{conv_id}/pending")
