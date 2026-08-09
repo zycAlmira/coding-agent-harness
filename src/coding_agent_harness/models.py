@@ -70,10 +70,15 @@ Action = Union[WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Sto
 # --- LLM 一次产出 ---
 @dataclass
 class AssistantTurn:
-    """LLM 一次回合:解析出的动作、意图说明、原始文本。"""
+    """LLM 一次回合:解析出的动作、意图说明、原始文本。
+
+    text: 动作伴随的文字说明(OpenAI 协议允许 content 与 tool_calls 同时返回,
+    即"我先看看目录结构"这类工具调用前的说明)。Respond 动作时即回复文本。
+    """
     action: Action
     intent: str
     raw: str
+    text: str | None = None
 
 
 # --- 护栏判定 ---

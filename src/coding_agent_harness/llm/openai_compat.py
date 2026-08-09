@@ -58,10 +58,13 @@ class OpenAICompatibleClient:
             # LLM 输出纯文本(回答问题/总结工作等):返回 Respond 动作,
             # 主循环将其发送给前端并继续,LLM 可在后续轮调用 stop 或继续操作。
             if content.strip():
-                return AssistantTurn(action=Respond(content[:2000]), intent="回复", raw=str(msg))
+                return AssistantTurn(action=Respond(content[:2000]), intent="回复", raw=str(msg), text=content[:2000])
             # 空内容:退化为 stop(罕见,可能是 API 异常)。
             return AssistantTurn(action=Stop("no_tool_call"), intent="", raw=str(msg))
         tc = tcs[0]["function"]
         action, intent = parse_tool_call(tc)
+        # 工具调用前的文字说明(content 与 tool_calls 并存):随动作一并返回,
+        # 由主循环展示给用户——否则"只有工具调用没有回复"(真实 LLM 常同时输出)。
+        text = content.strip()[:2000] if content.strip() else None
         log.debug("llm intent=%s action=%s", intent, type(action).__name__)  # key 不进日志
-        return AssistantTurn(action=action, intent=intent, raw=str(tc))
+        return AssistantTurn(action=action, intent=intent, raw=str(tc), text=text)

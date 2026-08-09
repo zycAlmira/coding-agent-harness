@@ -262,6 +262,10 @@ class AgentLoop:
         # 多轮对话:从先前对话恢复上下文,使 agent 能基于历史继续。
         if prior_history:
             self.conversation_history = list(prior_history)
+        # 全程是否发过任何文字回复(停机兜底判断用);最近一次工具结果摘要
+        # (stop 兜底时展示给用户,如「列出文件」直接看到列表)。
+        self._any_response = False
+        self._last_tool_summary = None
         while True:
             state.rounds += 1
             # 本轮是否已有文字输出(Respond / 工具后的总结),Stop trivial 时据此决定兜底。
@@ -278,6 +282,7 @@ class AgentLoop:
             # 说明 LLM 只是在反复说话不停止,自动结束循环防止死循环。
             if isinstance(turn.action, Respond):
                 self._responded_this_round = True
+                self._any_response = True
                 self.on_event({"type": "response", "text": turn.action.text})
                 self._append_history(Message("assistant", turn.action.text[:2000]))
                 steps.append(Step(turn=turn, verdict=None, tool_result=ToolResult(ok=True, output=turn.action.text), feedback=None, ts=ts_provider()))
@@ -300,6 +305,13 @@ class AgentLoop:
                     # 第 1 次回复:注入提示让 LLM 调用 stop
                     state.context_injected.append("你已经完成了文字回复。如果回答完毕,请调用 stop。")
                 continue
+            # 工具调用伴随文字说明(OpenAI 协议 content+tool_calls 并存):
+            # 先展示给用户,再执行工具——否则"只有工具调用,没有回复"。
+            if turn.text and turn.text.strip():
+                self._responded_this_round = True
+                self._any_response = True
+                self.on_event({"type": "response", "text": turn.text[:2000]})
+                self._append_history(Message("assistant", turn.text[:2000]))
             v = self.guard(turn.action, self.config)
             # 非 Respond 的工具调用:重置连续 Respond 计数。允许 Respond→Tool→Respond 模式。
             self._consecutive_responds = 0
@@ -366,6 +378,11 @@ class AgentLoop:
                 f"[上一步] {action_name}: {turn.intent}\n"
                 f"[结果]\n{output_text}\n\n{next_hint}"
             ))
+            # 记录最近一次工具结果摘要:stop trivial 时兜底展示给用户
+            # (如「列出文件」后 agent 直接 stop,用户能直接看到文件列表)。
+            # Stop 自身的回灌输出("stop: done")不算工具结果,不更新。
+            if not isinstance(turn.action, Stop):
+                self._last_tool_summary = output_text if output_text else None
             if fb:
                 state = update_after_feedback(state, fb, self.config)
                 # 测试通过后不自动停机,注入提示引导 agent 总结工作再 stop。
@@ -381,16 +398,23 @@ class AgentLoop:
                 # reason 为 trivial(空/done/no_tool_call)且本轮无任何文字输出时,
                 # 发兜底 response——防止"做了事但用户看不到回答"(真实 LLM 常直接
                 # stop 带个简短 reason,被 trivial 过滤后前端只剩胶囊)。
+                # 兜底优先展示最近一次工具结果摘要(用户直接看到答案,如文件列表)。
                 reason = turn.action.reason or ""
                 if reason and reason not in ("no_tool_call", "done"):
                     self.on_event({"type": "response", "text": reason})
                 elif not self._responded_this_round:
-                    self.on_event({"type": "response", "text": "(任务完成)"})
+                    self._any_response = True
+                    self.on_event({"type": "response", "text": self._last_tool_summary or "(任务完成)"})
                 outcome = "stopped"
                 break
             stop = decide_stop(state, self.config)
             if stop:
                 outcome = stop
+                # 停机兜底:达到轮数上限/连续失败停机且全程无任何文字时,
+                # 发中性回复(不捏造总结),用户至少知道发生了什么。
+                if not self._any_response:
+                    note = {"max_rounds": "已达到最大执行轮数", "stuck": "连续失败无进展"}.get(stop, stop)
+                    self.on_event({"type": "response", "text": f"({note},停止执行)"})
                 break
         # 任务结束记录记忆(循环外写,不破坏确定性)。
         # 成功:记录修改内容与测试结果;失败:记录症状,尝试提取已做的修改。

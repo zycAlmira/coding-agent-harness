@@ -11,12 +11,12 @@ from pathlib import Path
 FIX = Path(__file__).parent.parent.parent / "fixtures" / "sample_pkg"
 
 
-def _cfg(root):
+def _cfg(root, max_rounds=8):
     f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
     yaml.safe_dump({
         "project_root": str(root),
         "llm": {"base_url": "x", "model": "m"},
-        "guardrails": {"max_rounds": 8, "same_category_prompt_at": 2,
+        "guardrails": {"max_rounds": max_rounds, "same_category_prompt_at": 2,
                        "same_category_stop_at": 3, "no_change_stop_at": 2},
         "feedback": {"pytest_args": ["--tb=short", "-q"], "max_traceback_excerpt_lines": 8},
         "memory": {"fixes_path": str(root / "fixes.json"),
@@ -191,3 +191,72 @@ def test_loop_history_compact_old_rounds():
     assert len(steps) == MAX_FULL_STEPS, "完整回灌应只保留最近 MAX_FULL_STEPS 轮"
     assert "写文件 0" in compacted[0].content, "压缩保留动作名与意图要点"
     assert "[结果]" in steps[-1].content, "最近轮次保持完整"
+
+
+def test_tool_call_with_text_emits_response_then_executes(tmp_path):
+    """工具调用带伴随文字(OpenAI 协议 content+tool_calls 并存)→ 先发 response
+    显示文字,再执行工具。解决「只有工具调用,没有回复」。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    events = []
+    from coding_agent_harness.models import ListDir
+    class _T:
+        def __init__(self, action, intent, text=None):
+            self.action = action
+            self.intent = intent
+            self.text = text
+    class _LLM:
+        def __init__(self):
+            self.n = 0
+        def complete(self, messages, tools, state):
+            self.n += 1
+            if self.n == 1:
+                return _T(ListDir("."), "查看项目结构", text="我来看看目录结构。")
+            return _T(Stop("done"), "完成")
+    loop = AgentLoop(llm=_LLM(), config=cfg, memory=mem, on_event=events.append)
+    result = loop.run(task="列出文件内容", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    texts = [e["text"] for e in events if e["type"] == "response"]
+    assert texts and texts[0] == "我来看看目录结构。", "工具调用前的文字应显示给用户"
+
+
+def test_list_dir_then_stop_trivial_shows_result(tmp_path):
+    """「列出文件」场景:agent 调 list_dir 后直接 stop("done") → 兜底显示最后
+    工具结果摘要(用户直接看到文件列表),而非空泛的(任务完成)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "calc.py").write_text("x")
+    (ws / "README.md").write_text("x")
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    events = []
+    from coding_agent_harness.models import ListDir
+    mock = MockLLMClient([
+        {"when": "round 1", "action": ListDir("."), "intent": "查看项目结构"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem, on_event=events.append)
+    loop.run(task="列出文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    texts = [e["text"] for e in events if e["type"] == "response"]
+    assert texts, "应发兜底回复"
+    assert "calc.py" in texts[0], f"兜底应含文件列表摘要: {texts[0]}"
+
+
+def test_max_rounds_stop_emits_fallback(tmp_path):
+    """达到 max_rounds 停机且全程无任何文字 → 发中性兜底回复。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws, max_rounds=3)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    events = []
+    from coding_agent_harness.models import ListDir
+    mock = MockLLMClient([
+        {"when": "always", "action": ListDir("."), "intent": "查看"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem, on_event=events.append)
+    result = loop.run(task="列出文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "max_rounds"
+    texts = [e["text"] for e in events if e["type"] == "response"]
+    assert texts, "max_rounds 停机且无回复时应发兜底"
