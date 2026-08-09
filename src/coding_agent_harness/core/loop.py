@@ -142,8 +142,8 @@ class AgentLoop:
             "\n1. 每次只调用一个工具,附 intent(一句话动机)。"
             "\n2. 先理解需求再动手,只做用户要求的事。"
             "\n3. 任务完成:先简短总结,再调 stop(reason 写工作总结)。"
-            f"\n4. 本轮最多 {self.config.guardrails.max_rounds} 轮工具调用。请提前规划:一次读齐所需文件、"
-            "避免重复跑相同测试、避免重复执行已成功的操作,确保在轮数内完成任务。"
+            f"\n4. 尽量在 {self.config.guardrails.max_rounds} 轮工具调用内完成(硬上限 {self.config.guardrails.hard_max_rounds} 轮)。"
+            "请提前规划:一次读齐所需文件、避免重复跑相同测试、避免重复执行已成功的操作。"
             "\n\n## 意图分流"
             "\n- 「列出文件/有哪些文件」:调 list_dir → 直接回复文件名列表 → stop。**不要读文件内容,不要深入子目录,不要跑测试,不要用 shell。**"
             "\n- 「列出文件内容」:list_dir 了解结构 → 回复文件清单 + 每个文件 1-2 行概述。**不要读取所有文件的完整内容**(除非用户指名某个文件)。"
@@ -279,6 +279,13 @@ class AgentLoop:
         self._last_tool_summary = None
         while True:
             state.rounds += 1
+            # 达到软上限(max_rounds):注入「尽快收尾」提示,不终止——复杂任务
+            # 可继续执行,直到 hard_max_rounds 才强制停(安全阀)。
+            if state.rounds == self.config.guardrails.max_rounds:
+                state.context_injected.append(
+                    f"你已执行 {state.rounds} 轮工具调用(软上限)。如果任务已完成,请调用 stop 总结;"
+                    f"如果仍需继续,请高效执行(避免重复读取/重复测试),"
+                    f"系统最多允许 {self.config.guardrails.hard_max_rounds} 轮。")
             # 本轮是否已有文字输出(Respond / 工具后的总结),Stop trivial 时据此决定兜底。
             self._responded_this_round = False
             msgs = self._build_messages(task, state)

@@ -49,7 +49,8 @@ def test_no_change_streak_when_same_failed_set():
 
 
 def test_stop_on_max_rounds():
-    cfg = _cfg(max_rounds=2)
+    # 语义变更:max_rounds 为软上限,hard_max_rounds 才强制停机(见 test_stop_on_hard_max_rounds)
+    cfg = _cfg(max_rounds=2, hard_max_rounds=2)
     s = LoopState(rounds=2)
     assert decide_stop(s, cfg) == "max_rounds"
 
@@ -72,3 +73,19 @@ def test_should_prompt_switch():
     s = update_after_feedback(LoopState(), _fb(), cfg)
     s = update_after_feedback(s, _fb(), cfg)
     assert s.same_category_streak == 2  # 达 prompt_at
+
+
+def test_max_rounds_is_soft_warning_not_stop():
+    """max_rounds 是软警告:达到时不终止,仅 hard_max_rounds 才强制停。"""
+    cfg = _cfg(max_rounds=2, hard_max_rounds=5)
+    s = LoopState(rounds=2)
+    assert decide_stop(s, cfg) is None, "达到软上限不应停机"
+    s = LoopState(rounds=4)
+    assert decide_stop(s, cfg) is None, "软上限之上、硬上限之下仍不停机"
+
+
+def test_stop_on_hard_max_rounds():
+    """只有达到 hard_max_rounds 才强制终止(安全阀)。"""
+    cfg = _cfg(max_rounds=2, hard_max_rounds=5)
+    s = LoopState(rounds=5)
+    assert decide_stop(s, cfg) == "max_rounds"

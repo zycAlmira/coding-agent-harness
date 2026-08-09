@@ -11,12 +11,13 @@ from pathlib import Path
 FIX = Path(__file__).parent.parent.parent / "fixtures" / "sample_pkg"
 
 
-def _cfg(root, max_rounds=8):
+def _cfg(root, max_rounds=8, hard_max_rounds=60):
     f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
     yaml.safe_dump({
         "project_root": str(root),
         "llm": {"base_url": "x", "model": "m"},
-        "guardrails": {"max_rounds": max_rounds, "same_category_prompt_at": 2,
+        "guardrails": {"max_rounds": max_rounds, "hard_max_rounds": hard_max_rounds,
+                       "same_category_prompt_at": 2,
                        "same_category_stop_at": 3, "no_change_stop_at": 2},
         "feedback": {"pytest_args": ["--tb=short", "-q"], "max_traceback_excerpt_lines": 8},
         "memory": {"fixes_path": str(root / "fixes.json"),
@@ -333,3 +334,41 @@ def test_needs_approval_fallback_tells_agent_not_to_retry(tmp_path):
     rejected = [m.content for m in loop.conversation_history if "需人工审批" in m.content]
     assert rejected, "应存在 NeedsApproval 的回灌消息"
     assert "不要重复尝试" in rejected[0], f"回灌应告知不要重复尝试: {rejected[0]}"
+
+
+def test_loop_continues_past_max_rounds_with_warning(tmp_path):
+    """超过 max_rounds(软)但未达 hard_max_rounds 时循环继续,并注入「尽快收尾」提示。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws, max_rounds=3, hard_max_rounds=8)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ListDir
+    class _Cap:
+        def __init__(self):
+            self.received = []
+        def complete(self, messages, tools, state):
+            self.received.append([m.content for m in messages])
+            # 前 6 轮持续 ListDir(模拟复杂任务超过软上限),第 7 轮 stop
+            return MockLLMClient([
+                {"when": "round 6", "action": Stop("完成了"), "intent": "完成"},
+                {"when": "always", "action": ListDir("."), "intent": "查看"},
+            ]).complete(messages, tools, state)
+    cap = _Cap()
+    loop = AgentLoop(llm=cap, config=cfg, memory=mem)
+    result = loop.run(task="任务", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped", f"超过软上限应继续而非终止: {result.outcome}"
+    flat = "\n".join("\n".join(c) for c in cap.received)
+    assert "软上限" in flat and "已执行" in flat, "达到软上限应注入尽快收尾提示"
+
+
+def test_loop_stops_at_hard_max_rounds(tmp_path):
+    """达到 hard_max_rounds 仍强制终止(安全阀,防死循环)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws, max_rounds=3, hard_max_rounds=5)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ListDir
+    mock = MockLLMClient([{"when": "always", "action": ListDir("."), "intent": "查看"}])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    result = loop.run(task="任务", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "max_rounds"

@@ -89,12 +89,13 @@ def update_after_feedback(state: LoopState, fb: Feedback, config: Config) -> Loo
 def decide_stop(state: LoopState, config: Config) -> str | None:
     """停机判断:返回停机原因字符串,或 None 表示继续。
 
-    判定优先级:成功 > 回合上限 > 同类停机 > 无变化停机。确定性纯函数。
+    判定优先级:成功 > 硬回合上限 > 同类停机 > 无变化停机。确定性纯函数。
+    max_rounds 是软上限(仅注入提示,见 loop),hard_max_rounds 才是强制终止的安全阀。
     """
     gr = config.guardrails
     # PASS 不再自动判"success"——留给 agent 一轮机会总结工作文字描述再 stop。
-    # max_rounds 兜底防止无限循环。
-    if state.rounds >= gr.max_rounds:
+    # hard_max_rounds 兜底防止无限循环(正常任务由模型 stop / stuck 提前结束)。
+    if state.rounds >= gr.hard_max_rounds:
         return "max_rounds"
     if state.same_category_streak >= gr.same_category_stop_at:
         return "stuck"

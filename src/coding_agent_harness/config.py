@@ -18,9 +18,14 @@ class LLMConfig:
 
 @dataclass(frozen=True)
 class GuardrailsConfig:
-    """治理护栏配置:回合上限、重复类别处置、无变化停机、审批超时、shell 黑白名单。"""
+    """治理护栏配置:回合上限、重复类别处置、无变化停机、审批超时、shell 黑白名单。
+
+    max_rounds:软上限——达到时注入「尽快收尾」提示,不终止(复杂任务可继续)。
+    hard_max_rounds:硬上限——真正强制终止的安全阀(防死循环;stuck 兜底通常更早触发)。
+    """
 
     max_rounds: int = 20
+    hard_max_rounds: int = 60
     same_category_prompt_at: int = 2
     same_category_stop_at: int = 3
     no_change_stop_at: int = 2
