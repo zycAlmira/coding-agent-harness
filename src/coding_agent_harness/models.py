@@ -52,6 +52,7 @@ class ReadFile:
 @dataclass(frozen=True)
 class ListDir:
     path: str
+    recursive: bool | None = None  # 可选:true 一次列出整个目录树,避免多次逐层探索
 
 
 @dataclass(frozen=True)

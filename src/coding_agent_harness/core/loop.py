@@ -45,7 +45,11 @@ _AGENT_TOOLS = [
     }),
     ToolSchema("list_dir", "列出目录下的文件", {
         "type": "object",
-        "properties": {**_INTENT_PROP, "path": {"type": "string", "description": "目录路径"}},
+        "properties": {
+            **_INTENT_PROP,
+            "path": {"type": "string", "description": "目录路径"},
+            "recursive": {"type": "boolean", "description": "可选:true 时一次列出整个目录树(相对路径),避免逐层多次探索;了解项目结构时建议用"},
+        },
         "required": ["path", "intent"],
     }),
     ToolSchema("run_shell", "执行 shell 命令", {
@@ -145,7 +149,7 @@ class AgentLoop:
             f"\n4. 尽量在 {self.config.guardrails.max_rounds} 轮工具调用内完成(硬上限 {self.config.guardrails.hard_max_rounds} 轮)。"
             "请提前规划:一次读齐所需文件、避免重复跑相同测试、避免重复执行已成功的操作。"
             "\n\n## 意图分流"
-            "\n- 「列出文件/有哪些文件」:调 list_dir → 直接回复文件名列表 → stop。**不要读文件内容,不要深入子目录,不要跑测试,不要用 shell。**"
+            "\n- 「列出文件/有哪些文件」:调 list_dir(建议 recursive=true 一次列出整个目录树)→ 直接回复文件名列表 → stop。**不要读文件内容,不要逐层多次 list_dir,不要跑测试,不要用 shell。**"
             "\n- 「列出文件内容」:list_dir 了解结构 → 回复文件清单 + 每个文件 1-2 行概述。**不要读取所有文件的完整内容**(除非用户指名某个文件)。"
             "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**大文件被截断时用 offset/lines 参数分段读取,不要重复整读。"
             "\n- 修复/改代码:读→改→跑测试→总结→stop;先看懂再改。"

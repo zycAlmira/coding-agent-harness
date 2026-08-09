@@ -287,7 +287,8 @@ def test_system_prompt_list_dir_stops_exploration(tmp_path):
     loop = AgentLoop(llm=MockLLMClient([]), config=cfg, memory=mem)
     sys_content = loop._build_messages("任务", LoopState())[0].content
     assert "列出文件" in sys_content
-    assert "不要探索子目录" in sys_content or "不要深入" in sys_content, "提示词应禁止深入探索"
+    assert "不要逐层多次" in sys_content or "不要深入" in sys_content, "提示词应禁止逐层重复探索"
+    assert "recursive" in sys_content, "提示词应引导用 recursive 一次列出整个目录树"
     assert "shell" in sys_content and "不要" in sys_content, "提示词应告知 shell 不可用"
 
 

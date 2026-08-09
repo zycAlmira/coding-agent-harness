@@ -77,9 +77,15 @@ def delete_file(action: DeleteFile, root: Path) -> ToolResult:
 
 
 def list_dir(action: ListDir, root: Path) -> ToolResult:
-    """列出目录条目名,按名排序。"""
+    """列出目录条目名,按名排序;recursive=True 时列出整个目录树(相对路径)。"""
     p = _resolve(action.path, root)
     try:
+        if action.recursive:
+            lines = []
+            for f in sorted(p.rglob("*")):
+                if f.is_file() or f.is_dir():
+                    lines.append(str(f.relative_to(p)))
+            return ToolResult(ok=True, output="\n".join(lines))
         names = sorted(c.name for c in p.iterdir())
         return ToolResult(ok=True, output="\n".join(names))
     except OSError as e:

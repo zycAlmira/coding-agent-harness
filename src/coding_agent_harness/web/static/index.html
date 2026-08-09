@@ -143,6 +143,17 @@
     .tool-steps {
       margin:2px 0 10px 36px; /* 与 agent 气泡左对齐 */
     }
+    /* 任务完成后的折叠按钮:替代一长串工具行,点击展开全部 */
+    .tool-round-fold {
+      margin:2px 0 10px 36px;
+      padding:7px 12px; border:1px solid var(--border); border-radius:8px;
+      background:var(--surface); cursor:pointer; font-size:12px; color:var(--text2);
+      display:flex; align-items:center; gap:8px; transition:background .12s;
+    }
+    .tool-round-fold:hover { background:var(--hover); color:var(--text); }
+    .tool-round-fold .fold-icon { display:flex; color:var(--accent); }
+    .tool-round-fold .fold-chev { margin-left:auto; font-size:10px; transition:transform .15s; }
+    .tool-round-fold.open .fold-chev { transform:rotate(180deg); }
     .tool-row {
       display:flex; align-items:center; gap:8px;
       padding:5px 10px; margin-bottom:3px;
@@ -450,6 +461,7 @@
         if (es) es.close();
         document.getElementById('btnSend').disabled = false;
         updateStat('stStatus', e.outcome === 'stopped' ? '完成' : '终止');
+        collapseToolRounds();  // 任务完成:把工具行自动折叠成单个「N 步工具调用」按钮
         loadHistory(); // 刷新历史列表
         return;
       }
@@ -541,7 +553,10 @@
     function appendToolSteps(steps) {
       if (!steps.length) return;
       const chat = document.getElementById('chat-messages');
-      let html = '<div class="tool-steps">';
+      // 每个 appendToolSteps 调用(通常每轮一个 action)包一个 .tool-round 容器,
+      // 任务完成后整个容器折叠成单个按钮。
+      const rid = 'tr-' + nid();
+      let html = `<div class="tool-round" id="${rid}"><div class="tool-steps">`;
       for (const s of steps) {
         // 工具行:图标 + 工具名 + 完整 intent + 状态标记 + 折叠箭头;详情默认收起,点击展开
         html += `<div class="tool-row ${s.stepClass}" id="${s.id}" onclick="toggleStepDetail('${s.id}')" title="点击展开详情">
@@ -560,9 +575,37 @@
           ${s.err ? `<div class="kv err"><k>结果</k> ${esc(s.err)}</div>` : ''}
         </div>`;
       }
-      html += '</div>';
+      html += '</div></div>';
       chat.insertAdjacentHTML('beforeend', html);
       chat.scrollTop = chat.scrollHeight;
+    }
+
+    // 任务完成后把工具行折叠成单个「N 步工具调用」按钮;点击展开全部
+    function collapseToolRounds() {
+      const rounds = document.querySelectorAll('.tool-round');
+      rounds.forEach(r => {
+        if (r.querySelector('.tool-round-fold')) return;  // 已折叠
+        const rows = r.querySelectorAll('.tool-row');
+        if (!rows.length) return;
+        const rid = 'fold-' + nid();
+        const foldBtn = `<div class="tool-round-fold" id="${rid}" onclick="toggleToolRound('${rid}')">
+          <span class="fold-icon">${actionSvg('run_tests')}</span>
+          <span>${rows.length} 步工具调用</span>
+          <span class="fold-chev">▾</span>
+        </div>`;
+        // 把 .tool-round 内容替换为折叠按钮 + 隐藏的 .tool-steps
+        r.innerHTML = foldBtn + `<div class="tool-steps" style="display:none">${r.querySelector('.tool-steps').innerHTML}</div>`;
+      });
+    }
+
+    function toggleToolRound(foldId) {
+      const btn = document.getElementById(foldId);
+      const round = btn ? btn.parentElement : null;
+      if (!round) return;
+      const steps = round.querySelector('.tool-steps');
+      const open = steps.style.display !== 'none';
+      steps.style.display = open ? 'none' : 'block';
+      btn.classList.toggle('open', !open);
     }
 
     function appendError(msg) {
@@ -683,11 +726,12 @@
                 <div class="bubble">${esc(t.content)}</div>
               </div>`);
             }
-            // 工具步骤(工具行 + 自动折叠,与实时渲染同构)
+            // 工具步骤(工具行,任务完成后折叠成单个按钮)
             if (t.steps && t.steps.length > 0) {
               const iconSteps = t.steps.filter(s => s.type !== 'response' && s.type !== 'loop_stopped' && s.type !== 'error');
               if (iconSteps.length > 0) {
-                let html = '<div class="tool-steps">';
+                const rid = 'htr-' + nid();
+                let html = `<div class="tool-round" id="${rid}"><div class="tool-steps">`;
                 for (const s of iconSteps) {
                   const actionName = s.action || s.type || '?';
                   const fb = s.feedback;
@@ -710,7 +754,7 @@
                     ${s.error ? `<div class="kv err"><k>结果</k> ${esc(s.error)}</div>` : ''}
                   </div>`;
                 }
-                html += '</div>';
+                html += '</div></div>';
                 chat.insertAdjacentHTML('beforeend', html);
               }
             }
@@ -728,6 +772,7 @@
         updateStat('stRound', '—');
         updateStat('stAction', '—');
         document.getElementById('btnSend').disabled = false;
+        collapseToolRounds();  // 历史加载:工具行折叠成按钮
         chat.scrollTop = chat.scrollHeight;
         loadHistory(); // 刷新高亮
       });
