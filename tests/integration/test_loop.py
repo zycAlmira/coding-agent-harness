@@ -373,3 +373,42 @@ def test_loop_stops_at_hard_max_rounds(tmp_path):
     loop = AgentLoop(llm=mock, config=cfg, memory=mem)
     result = loop.run(task="任务", ts_provider=lambda: "2026-07-22T00:00:00")
     assert result.outcome == "max_rounds"
+
+
+def test_stop_reason_redundant_not_duplicated(tmp_path):
+    """最终 Stop reason 与已输出的文字重复(清单输出两遍)→ 不再重复发,
+    已输出的内容就是最终答复(修复「最后回答重复输出清单与概述」)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    events = []
+    # 先 Respond 输出完整清单,再 Stop reason 又输出一遍完整清单(真实 LLM 行为)
+    mock = MockLLMClient([
+        {"when": "round 1", "action": Respond("文件清单:\n- calc.py\n- README.md\n概述: 计算器与说明"), "intent": "回复"},
+        {"when": "always", "action": Stop("文件清单:\n- calc.py\n- README.md\n概述: 计算器与说明"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem, on_event=events.append)
+    result = loop.run(task="列出文件内容", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    texts = [e["text"] for e in events if e["type"] == "response"]
+    # 清单只在 Respond 输出一次;Stop 的重复 reason 被去重,不再出现第二遍
+    assert len(texts) == 1, f"清单不应重复输出,应只有一次: {texts}"
+    assert "文件清单" in texts[0]
+
+
+def test_stop_reason_summary_not_duplicated(tmp_path):
+    """Stop reason 是简短总结(未与已输出重复)→ 正常发出。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    events = []
+    mock = MockLLMClient([
+        {"when": "round 1", "action": Respond("文件清单:\n- calc.py\n- README.md"), "intent": "回复"},
+        {"when": "always", "action": Stop("已列出 2 个文件的清单"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem, on_event=events.append)
+    loop.run(task="列出文件内容", ts_provider=lambda: "2026-07-22T00:00:00")
+    texts = [e["text"] for e in events if e["type"] == "response"]
+    assert texts[-1] == "已列出 2 个文件的清单", "简短总结应正常发出"

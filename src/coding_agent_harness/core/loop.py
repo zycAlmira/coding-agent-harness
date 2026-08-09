@@ -167,6 +167,7 @@ class AgentLoop:
             "\n- 直接回答用户的问题,先结论后细节,简短精炼。"
             "\n- 不要复述用户任务,不要输出思考过程,不要逐条列举你调用的工具。"
             "\n- 测试结果一句话带过(如「测试通过:3 passed」);失败时指出失败项与原因。"
+            "\n- **文件清单/概述等长内容只输出一次**:中途输出过就不再在 stop 总结里重复;"
             + ("\n项目约定:\n" + "\n".join(convs) if convs else "")
         ))
         msgs = [sys]
@@ -281,6 +282,9 @@ class AgentLoop:
         # (stop 兜底时展示给用户,如「列出文件」直接看到列表)。
         self._any_response = False
         self._last_tool_summary = None
+        # 本任务已输出的全部 response 文本(Stop reason 去重用——真实 LLM 常在
+        # 中途输出清单/概述后,Stop 时又把同一份内容完整输出一遍,前端重复显示)。
+        self._emitted_texts: list[str] = []
         while True:
             state.rounds += 1
             # 达到软上限(max_rounds):注入「尽快收尾」提示,不终止——复杂任务
@@ -305,6 +309,7 @@ class AgentLoop:
             if isinstance(turn.action, Respond):
                 self._responded_this_round = True
                 self._any_response = True
+                self._emitted_texts.append(turn.action.text)
                 self.on_event({"type": "response", "text": turn.action.text})
                 self._append_history(Message("assistant", turn.action.text[:2000]))
                 steps.append(Step(turn=turn, verdict=None, tool_result=ToolResult(ok=True, output=turn.action.text), feedback=None, ts=ts_provider()))
@@ -332,6 +337,7 @@ class AgentLoop:
             if turn.text and turn.text.strip():
                 self._responded_this_round = True
                 self._any_response = True
+                self._emitted_texts.append(turn.text)
                 self.on_event({"type": "response", "text": turn.text[:2000]})
                 self._append_history(Message("assistant", turn.text[:2000]))
             v = self.guard(turn.action, self.config)
@@ -437,7 +443,10 @@ class AgentLoop:
                 # 兜底优先展示最近一次工具结果摘要(用户直接看到答案,如文件列表)。
                 reason = turn.action.reason or ""
                 if reason and reason not in ("no_tool_call", "done"):
-                    self.on_event({"type": "response", "text": reason})
+                    # 去重:reason 与已输出的文字重复(清单/概述输出两遍)→ 不再发,
+                    # 已输出的内容就是最终答复。
+                    if not _is_redundant(reason, self._emitted_texts):
+                        self.on_event({"type": "response", "text": reason})
                 elif not self._responded_this_round:
                     self._any_response = True
                     self.on_event({"type": "response", "text": self._last_tool_summary or "(任务完成)"})
@@ -500,6 +509,33 @@ class AgentLoop:
         self.memory.record_fix(Fix(
             category=cat.value, symptom=symptom, fix=fix, timestamp=ts_provider(),
         ))
+
+
+def _is_redundant(text: str, prior_texts: list[str]) -> bool:
+    """判定文本与已输出内容重复(确定性纯函数,可单测)。
+
+    真实 LLM 常在任务中途输出文件清单/概述后,Stop 时把同一份内容完整
+    再输出一遍。判定规则:
+    - 完全相同;
+    - 一方完整包含另一方(短 >= 20 字);
+    - 前 30 字相同(高度重叠的开头)。
+    满足任一即视为重复——已输出的内容就是最终答复,不应再发。
+    """
+    t = text.strip()
+    if not t:
+        return True
+    for p in prior_texts:
+        p = p.strip()
+        if not p:
+            continue
+        if t == p:
+            return True
+        short, long = (t, p) if len(t) < len(p) else (p, t)
+        if len(short) >= 20 and short in long:
+            return True
+        if len(t) >= 30 and len(p) >= 30 and t[:30] == p[:30]:
+            return True
+    return False
 
 
 def _truncate_middle(text: str, head: int = 800, tail: int = 700, limit: int = 1500) -> str:
