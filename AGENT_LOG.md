@@ -176,3 +176,15 @@
 - 验证:112 passed,lint 全过。
 - 教训 17:**"没回答"往往是展示层与协议层的过滤共同造成的**——LLM 确实产出了 reason,但被 trivial 过滤吞掉;兜底文案应中性(「(任务完成)」而非捏造总结)。
 - 教训 18:**给 LLM 的上下文要像 Claude Code 一样"按需精简"**:完整工具输出给模型 ≠ 更好的回答——反馈闭环已把关键信息结构化提取(feedback 消息),再回灌全文只会稀释注意力、放大冗余。
+
+## 2026-08-09 修复「只有工具调用没有回复」
+
+- 触发:用户反馈「要求 agent 列出文件内容,没有回复,只有工具调用」。
+- 根因(真实 LLM 协议):OpenAI 兼容 API 允许 content 与 tool_calls 同时返回(工具调用前的文字说明)。openai_compat 只取 tool_calls 丢弃 content → 前端只见胶囊无文字。这是「无回答」的协议层根因,与之前 stop-trivial 过滤是不同层面的问题。
+- 修复:
+  1. AssistantTurn.text 字段 + openai_compat 携带 content(工具前文字)
+  2. loop 工具执行前先发 response 展示伴随文字
+  3. stop trivial 兜底改展示最近一次工具结果摘要(列出文件后直接看到列表)——Stop 自身回灌输出不覆盖摘要
+  4. max_rounds/stuck 停机兜底(全程无文字时发中性回复)
+- 端到端验证:「列出文件内容」→「我来看看项目目录结构。」→ ListDir 胶囊 → 兜底显示 README.md+calc.py。
+- 教训 19:**协议层字段被丢弃 = 用户可见的「没回答」**——content+tool_calls 并存是 OpenAI 协议标准行为,不是 LLM 异常;展示层必须把两者都呈现,顺序为「先文字说明,再工具执行」。
