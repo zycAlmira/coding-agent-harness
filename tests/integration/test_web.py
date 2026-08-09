@@ -27,6 +27,9 @@ def test_serves_index_html(tmp_path):
     assert r.status_code == 200
     assert "Coding Agent" in r.text
     assert "pending_approval" in r.text  # 前端含审批按钮渲染分支
+    assert "mdRender" in r.text  # agent 回复 markdown 渲染
+    assert "mdInline" in r.text
+    assert ".msg-agent .bubble pre" in r.text  # markdown 代码块样式
 
 
 def test_hitl_approve_deletes_file(tmp_path):
