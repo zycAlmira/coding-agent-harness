@@ -139,27 +139,35 @@
     .msg-agent .bubble.streamable:hover { filter:brightness(.98); }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-    /* 工具步骤胶囊(嵌在聊天流中) */
+    /* 工具调用行(Claude Code 风格:图标 + 工具名 + 完整意图,详情自动折叠) */
     .tool-steps {
-      margin:4px 0 12px 36px; /* 与 agent 气泡左对齐 */
+      margin:2px 0 10px 36px; /* 与 agent 气泡左对齐 */
     }
-    .step-mini {
-      display:inline-flex; align-items:center; gap:6px;
-      padding:5px 10px; border-radius:20px; background:var(--surface);
-      border:1px solid var(--border); font-size:12px; cursor:pointer;
-      margin-right:6px; margin-bottom:4px;
+    .tool-row {
+      display:flex; align-items:center; gap:8px;
+      padding:5px 10px; margin-bottom:3px;
+      border:1px solid var(--border); border-radius:8px;
+      background:var(--surface); cursor:pointer; font-size:12px;
+      transition:background .12s;
     }
-    .step-mini:hover { background:var(--hover); }
-    .step-mini .si-icon { font-size:14px; }
-    .step-mini .si-name { font-weight:600; }
-    .step-mini .si-intent { color:var(--text2); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .step-mini.pass { border-color:var(--success); background:#f0fdf4; }
-    .step-mini.deny { border-color:var(--danger); background:#fef2f2; }
-    .step-mini.pass .si-ok { color:var(--success); }
-    .step-mini.deny .si-deny { color:var(--danger); }
+    .tool-row:hover { background:var(--hover); }
+    .tool-row .tr-icon { display:flex; color:var(--accent); flex-shrink:0; }
+    .tool-row .tr-name { font-weight:600; color:var(--text); flex-shrink:0; }
+    .tool-row .tr-intent {
+      color:var(--text2); flex:1; min-width:0;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .tool-row .tr-badge { flex-shrink:0; display:flex; align-items:center; }
+    .tool-row .tr-badge.pass { color:var(--success); }
+    .tool-row .tr-badge.deny { color:var(--danger); }
+    .tool-row .tr-chev { color:var(--text2); font-size:10px; flex-shrink:0; transition:transform .15s; }
+    .tool-row.open .tr-chev { transform:rotate(180deg); }
+    .tool-row.pass { border-left:3px solid var(--success); background:#fbfefb; }
+    .tool-row.deny { border-left:3px solid var(--danger); background:#fefafa; }
+    .tool-row.pass:hover, .tool-row.deny:hover { background:var(--hover); }
     .step-detail {
-      display:none; padding:8px; margin-top:4px; border-radius:6px;
-      background:var(--surface); border:1px solid var(--border); font-size:12px;
+      display:none; padding:8px 10px; margin:0 0 4px; border-radius:0 0 8px 8px;
+      background:#fafafa; border:1px solid var(--border); border-top:none; font-size:12px;
     }
     .step-detail.open { display:block; }
     .step-detail pre {
@@ -168,6 +176,7 @@
     }
     .step-detail .kv { margin:2px 0; }
     .step-detail .kv k { color:var(--text2); font-weight:600; }
+    .step-detail .kv.err { color:var(--danger); }
 
     /* 审批卡片 */
     .approval-inline {
@@ -485,7 +494,6 @@
       updateStat('stTools', toolCount);
 
       const actionName = e.action || e.type || '?';
-      const icon = ACTION_ICONS[actionName] || '🔧';
       const verdict = e.verdict || '';
       const fb = e.feedback;
 
@@ -493,17 +501,17 @@
       if (verdict === 'Deny') { stepClass = 'deny'; denyCount++; updateStat('stDeny', denyCount); }
       else if (fb && fb.status === 'PASS') stepClass = 'pass';
 
-      updateStat('stAction', icon + ' ' + actionName);
+      updateStat('stAction', actionName);
       if (fb) {
         updateStat('stFeedback', fb.status === 'PASS' ? '✅ PASS' : `❌ ${fb.failed||0}`);
         document.getElementById('stFeedback').className = 'sv ' + (fb.status === 'PASS' ? 'ok' : 'bad');
       }
 
-      // 即时渲染:工具胶囊实时出现(不攒批到任务结束),用户能实时看到 agent 的动作
+      // 即时渲染:工具行实时出现(不攒批到任务结束),用户能实时看到 agent 的动作
       appendToolSteps([{
-        icon, actionName, intent: e.intent || '',
+        actionName, intent: e.intent || '',
         verdict, stepClass,
-        ok: e.ok, fb,
+        ok: e.ok, err: e.error || '', fb,
         id: 'step-' + nid(),
       }]);
     }
@@ -535,17 +543,21 @@
       const chat = document.getElementById('chat-messages');
       let html = '<div class="tool-steps">';
       for (const s of steps) {
-        html += `<span class="step-mini ${s.stepClass}" onclick="toggleStepDetail('${s.id}')" title="${esc(s.intent)}">
-          <span class="si-icon">${s.icon}</span>
-          <span class="si-name">${esc(s.actionName)}</span>
-          ${s.stepClass === 'pass' ? '<span class="si-ok">✅</span>' : ''}
-          ${s.stepClass === 'deny' ? '<span class="si-deny">🚫</span>' : ''}
-        </span>`;
-        // 详情面板
+        // 工具行:图标 + 工具名 + 完整 intent + 状态标记 + 折叠箭头;详情默认收起,点击展开
+        html += `<div class="tool-row ${s.stepClass}" id="${s.id}" onclick="toggleStepDetail('${s.id}')" title="点击展开详情">
+          <span class="tr-icon">${actionSvg(s.actionName)}</span>
+          <span class="tr-name">${esc(s.actionName)}</span>
+          <span class="tr-intent" title="${esc(s.intent)}">${esc(s.intent)}</span>
+          ${s.stepClass === 'pass' ? `<span class="tr-badge pass">${PASS_SVG}</span>` : ''}
+          ${s.stepClass === 'deny' ? `<span class="tr-badge deny">${DENY_SVG}</span>` : ''}
+          <span class="tr-chev">▾</span>
+        </div>`;
+        // 详情面板(自动折叠,点击行展开)
         html += `<div class="step-detail" id="${s.id}-detail">
           ${s.intent ? `<div class="kv"><k>intent</k> ${esc(s.intent)}</div>` : ''}
           ${s.verdict ? `<div class="kv"><k>护栏</k> ${esc(s.verdict)}</div>` : ''}
           ${s.fb ? `<div class="kv"><k>反馈</k> ${esc(s.fb.status)} — ${esc(s.fb.summary||'')}</div>` : ''}
+          ${s.err ? `<div class="kv err"><k>结果</k> ${esc(s.err)}</div>` : ''}
         </div>`;
       }
       html += '</div>';
@@ -671,29 +683,31 @@
                 <div class="bubble">${esc(t.content)}</div>
               </div>`);
             }
-            // 工具步骤(可点击展开详情)
+            // 工具步骤(工具行 + 自动折叠,与实时渲染同构)
             if (t.steps && t.steps.length > 0) {
               const iconSteps = t.steps.filter(s => s.type !== 'response' && s.type !== 'loop_stopped' && s.type !== 'error');
               if (iconSteps.length > 0) {
                 let html = '<div class="tool-steps">';
                 for (const s of iconSteps) {
                   const actionName = s.action || s.type || '?';
-                  const icon = ACTION_ICONS[actionName] || '🔧';
                   const fb = s.feedback;
                   let cls = '';
                   if (s.verdict === 'Deny') cls = 'deny';
                   else if (fb && fb.status === 'PASS') cls = 'pass';
                   const hid = 'hstep-' + nid();
-                  html += `<span class="step-mini ${cls}" onclick="toggleStepDetail('${hid}')" title="${esc(s.intent||'')}">
-                    <span class="si-icon">${icon}</span>
-                    <span class="si-name">${esc(actionName)}</span>
-                    ${cls === 'pass' ? '<span class="si-ok">✅</span>' : ''}
-                    ${cls === 'deny' ? '<span class="si-deny">🚫</span>' : ''}
-                  </span>`;
+                  html += `<div class="tool-row ${cls}" id="${hid}" onclick="toggleStepDetail('${hid}')" title="点击展开详情">
+                    <span class="tr-icon">${actionSvg(actionName)}</span>
+                    <span class="tr-name">${esc(actionName)}</span>
+                    <span class="tr-intent" title="${esc(s.intent||'')}">${esc(s.intent||'')}</span>
+                    ${cls === 'pass' ? `<span class="tr-badge pass">${PASS_SVG}</span>` : ''}
+                    ${cls === 'deny' ? `<span class="tr-badge deny">${DENY_SVG}</span>` : ''}
+                    <span class="tr-chev">▾</span>
+                  </div>`;
                   html += `<div class="step-detail" id="${hid}-detail">
                     ${s.intent ? `<div class="kv"><k>intent</k> ${esc(s.intent)}</div>` : ''}
                     ${s.verdict ? `<div class="kv"><k>护栏</k> ${esc(s.verdict)}</div>` : ''}
                     ${fb ? `<div class="kv"><k>反馈</k> ${esc(fb.status)} — ${esc(fb.summary||'')}</div>` : ''}
+                    ${s.error ? `<div class="kv err"><k>结果</k> ${esc(s.error)}</div>` : ''}
                   </div>`;
                 }
                 html += '</div>';
@@ -803,7 +817,9 @@
 
     // ═══════ 工具函数 ═══════
     function toggleStepDetail(id) {
+      const row = document.getElementById(id);
       const el = document.getElementById(id + '-detail');
+      if (row) row.classList.toggle('open');
       if (el) el.classList.toggle('open');
     }
 
@@ -851,12 +867,25 @@
     function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
     function escJs(s) { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
 
-    const ACTION_ICONS = {
-      'read_file':'📖', 'write_file':'✏️', 'delete_file':'🗑️', 'list_dir':'📂',
-      'run_shell':'⚡', 'run_tests':'🧪', 'stop':'🛑', 'respond':'💬',
-      'ReadFile':'📖', 'WriteFile':'✏️', 'DeleteFile':'🗑️', 'ListDir':'📂',
-      'RunShell':'⚡', 'RunTests':'🧪', 'Stop':'🛑', 'Respond':'💬',
+    // 工具调用 SVG 图标(统一线条风格,与头像/按钮 SVG 一致)
+    const _S = 'width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
+    const ACTION_SVGS = {
+      'read_file': `<svg viewBox="0 0 16 16" ${_S}><path d="M3 1.5h6.5L13 5v9a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 14z"/><path d="M9.5 1.5V5H13"/><path d="M5.5 8.5h5M5.5 11h5"/></svg>`,
+      'write_file': `<svg viewBox="0 0 16 16" ${_S}><path d="M3 1.5h6.5L13 5v9a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 14z"/><path d="M9.5 1.5V5H13"/><path d="M5 12.5 11 6.5l1.5 1.5-6 6L4.5 14z"/></svg>`,
+      'delete_file': `<svg viewBox="0 0 16 16" ${_S}><path d="M2.5 4h11"/><path d="M6 4V2.5h4V4"/><path d="M4 4l.7 9.3a.5.5 0 0 0 .5.5h5.6a.5.5 0 0 0 .5-.5L12 4"/><path d="M6.5 7v4M9.5 7v4"/></svg>`,
+      'list_dir': `<svg viewBox="0 0 16 16" ${_S}><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3l1.5 2H13a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5z"/></svg>`,
+      'run_shell': `<svg viewBox="0 0 16 16" ${_S}><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6l2.5 2-2.5 2"/><path d="M8.5 10h3"/></svg>`,
+      'run_tests': `<svg viewBox="0 0 16 16" ${_S}><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M5.5 8.5l2 2 3-3.5"/></svg>`,
+      'stop': `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>`,
+      'respond': `<svg viewBox="0 0 16 16" ${_S}><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6A1.5 1.5 0 0 1 12.5 11H7l-3.5 3.5V11H3.5A1.5 1.5 0 0 1 2 9.5z"/></svg>`,
     };
+    function actionSvg(name) {
+      const key = (name || '').toLowerCase();
+      return ACTION_SVGS[key] || _FALLBACK_SVG;
+    }
+    const PASS_SVG = '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5L13 5"/></svg>';
+    const DENY_SVG = '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+    const _FALLBACK_SVG = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 4v5"/><circle cx="8" cy="11.5" r=".8" fill="currentColor"/></svg>';
 
     // 头像图标:白色星芒(sparkle,Claude 风格几何图形),渲染在渐变圆内
     const AVATAR_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 2c.6 3.6 2.4 5.4 6 6-3.6.6-5.4 2.4-6 6-.6-3.6-2.4-5.4-6-6 3.6-.6 5.4-2.4 6-6z"/></svg>';

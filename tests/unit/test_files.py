@@ -33,4 +33,33 @@ def test_long_output_truncated(tmp_path):
     write_file(WriteFile("big.txt", "x" * 20000), tmp_path)
     r = read_file(ReadFile("big.txt"), tmp_path)
     assert len(r.output) < 20000
-    assert "..." in r.output
+    assert "已截断" in r.output  # 截断必须明确告知,防 agent 误以为读错反复重读
+
+
+def test_read_file_offset_lines(tmp_path):
+    """read_file 支持 offset/lines:按行切片读取文件中间部分(offset 1-based)。"""
+    from coding_agent_harness.models import ReadFile
+    from coding_agent_harness.tools.files import read_file
+    p = tmp_path / "big.txt"
+    p.write_text("\n".join(f"line {i}" for i in range(100)))
+    # offset=50 表示第 50 行(1-based)起读 3 行 → line 49/50/51
+    r = read_file(ReadFile("big.txt", offset=50, lines=3), tmp_path)
+    assert r.ok
+    assert r.output == "line 49\nline 50\nline 51"
+    # 缺省 offset/lines:读全文
+    r = read_file(ReadFile("big.txt"), tmp_path)
+    assert r.ok and "line 0" in r.output and "line 99" in r.output
+    # offset 越界 → 错误
+    r = read_file(ReadFile("big.txt", offset=200), tmp_path)
+    assert not r.ok
+
+
+def test_read_file_truncated_tells_agent(tmp_path):
+    """超长输出截断时,回灌应明确告知「已截断」——防止 agent 以为读错反复重读。"""
+    from coding_agent_harness.models import ReadFile
+    from coding_agent_harness.tools.files import read_file
+    p = tmp_path / "huge.txt"
+    p.write_text("x" * 20000)
+    r = read_file(ReadFile("huge.txt"), tmp_path)
+    assert r.ok
+    assert "截断" in r.output, "截断时应明确告知,否则 agent 会反复重读想要完整内容"

@@ -45,6 +45,8 @@ class RunTests:
 @dataclass(frozen=True)
 class ReadFile:
     path: str
+    offset: int | None = None  # 可选:起始行号(1-based,默认 1)
+    lines: int | None = None   # 可选:读取行数(默认读全文,受输出截断限制)
 
 
 @dataclass(frozen=True)

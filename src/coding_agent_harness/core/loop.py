@@ -22,7 +22,12 @@ _INTENT_PROP = {"intent": {"type": "string", "description": "执行此动作的�
 _AGENT_TOOLS = [
     ToolSchema("read_file", "读取文件内容", {
         "type": "object",
-        "properties": {**_INTENT_PROP, "path": {"type": "string", "description": "文件路径"}},
+        "properties": {
+            **_INTENT_PROP,
+            "path": {"type": "string", "description": "文件路径"},
+            "offset": {"type": "integer", "description": "可选:起始行号(1-based)。大文件被截断时,用 offset 分段读取中间部分"},
+            "lines": {"type": "integer", "description": "可选:读取行数,与 offset 配合分段读取"},
+        },
         "required": ["path", "intent"],
     }),
     ToolSchema("write_file", "写入或覆写文件", {
@@ -141,7 +146,8 @@ class AgentLoop:
             "避免重复跑相同测试、避免重复执行已成功的操作,确保在轮数内完成任务。"
             "\n\n## 意图分流"
             "\n- 「列出文件/有哪些文件」:调 list_dir → 直接回复文件名列表 → stop。**不要读文件内容,不要深入子目录,不要跑测试,不要用 shell。**"
-            "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**"
+            "\n- 「列出文件内容」:list_dir 了解结构 → 回复文件清单 + 每个文件 1-2 行概述。**不要读取所有文件的完整内容**(除非用户指名某个文件)。"
+            "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**大文件被截断时用 offset/lines 参数分段读取,不要重复整读。"
             "\n- 修复/改代码:读→改→跑测试→总结→stop;先看懂再改。"
             "\n- 只跑指定测试:run_tests 带 path 参数。"
             "\n- 分析/评估项目:读 1-3 个关键文件→给出分析→stop;不改代码,不跑测试(除非用户要求)。"
@@ -366,7 +372,8 @@ class AgentLoop:
             # 会让前端显示两个无动作名的内部胶囊)。
             action_name = type(turn.action).__name__
             self.on_event({"type": "action", "action": action_name, "intent": turn.intent,
-                           "verdict": vname, "ok": tr.ok, "feedback": _fb_to_dict(fb)})
+                           "verdict": vname, "ok": tr.ok, "feedback": _fb_to_dict(fb),
+                           "error": tr.error})
             steps.append(Step(turn=turn, verdict=v, tool_result=tr, feedback=fb, ts=ts_provider()))
             # 记录本轮对话历史(下轮 _build_messages 时追加到消息列表),
             # 让真实 LLM 能基于之前的执行结果做下一步决策。
