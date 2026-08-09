@@ -412,3 +412,31 @@ def test_stop_reason_summary_not_duplicated(tmp_path):
     loop.run(task="列出文件内容", ts_provider=lambda: "2026-07-22T00:00:00")
     texts = [e["text"] for e in events if e["type"] == "response"]
     assert texts[-1] == "已列出 2 个文件的清单", "简短总结应正常发出"
+
+
+def test_repeated_read_same_file_prompt(tmp_path):
+    """连续多次读取同一文件 → 注入「不要重复读取同一文件,考虑分段或继续」提示。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "kwic.java").write_text("x" * 500)
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    class _Cap:
+        def __init__(self):
+            self.received = []
+        def complete(self, messages, tools, state):
+            self.received.append("\n".join(m.content for m in messages))
+            return MockLLMClient([
+                {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+                {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+                {"when": "round 3", "action": ReadFile("kwic.java"), "intent": "完整读"},
+                {"when": "round 4", "action": ReadFile("kwic.java"), "intent": "再完整读"},
+                {"when": "always", "action": Stop("done"), "intent": "完成"},
+            ]).complete(messages, tools, state)
+    cap = _Cap()
+    loop = AgentLoop(llm=cap, config=cfg, memory=mem)
+    result = loop.run(task="看文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    flat = "\n".join(cap.received)
+    assert "重复读取" in flat and "同一文件" in flat, "连续重复读同一文件应注入提示"

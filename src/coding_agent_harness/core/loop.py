@@ -5,7 +5,7 @@ import threading
 from typing import Callable
 from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
-    RunTests, Stop, ToolResult, Step, RunResult, Fix, Respond, WriteFile,
+    RunTests, Stop, ToolResult, Step, RunResult, Fix, Respond, WriteFile, ReadFile,
 )
 from coding_agent_harness.llm.base import LLMClient, Message, ToolSchema
 from coding_agent_harness.tools.dispatch import dispatch
@@ -151,7 +151,7 @@ class AgentLoop:
             "\n\n## 意图分流"
             "\n- 「列出文件/有哪些文件」:调 list_dir(建议 recursive=true 一次列出整个目录树)→ 直接回复文件名列表 → stop。**不要读文件内容,不要逐层多次 list_dir,不要跑测试,不要用 shell。**"
             "\n- 「列出文件内容」:list_dir 了解结构 → 回复文件清单 + 每个文件 1-2 行概述。**不要读取所有文件的完整内容**(除非用户指名某个文件)。"
-            "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**大文件被截断时用 offset/lines 参数分段读取,不要重复整读。"
+            "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**大文件被截断时用 offset/lines 参数分段读取,不要重复整读;已读过的行区间不要重复读,用 offset 继续读未读部分。"
             "\n- 修复/改代码:读→改→跑测试→总结→stop;先看懂再改。"
             "\n- 只跑指定测试:run_tests 带 path 参数。"
             "\n- 分析/评估项目:读 1-3 个关键文件→给出分析→stop;不改代码,不跑测试(除非用户要求)。"
@@ -344,6 +344,22 @@ class AgentLoop:
             v = self.guard(turn.action, self.config)
             # 非 Respond 的工具调用:重置连续 Respond 计数。允许 Respond→Tool→Respond 模式。
             self._consecutive_responds = 0
+            # 重复读取同一文件检测:连续 3 次 ReadFile 同一路径 → 注入提示
+            # (真实 LLM 曾 45+ 次重读同一文件拼凑"完整内容",空转到 60 轮耗尽)。
+            if isinstance(turn.action, ReadFile):
+                last_path = getattr(self, "_last_read_path", None)
+                if turn.action.path == last_path:
+                    self._read_streak = getattr(self, "_read_streak", 0) + 1
+                else:
+                    self._read_streak = 1
+                self._last_read_path = turn.action.path
+                if self._read_streak >= 3:
+                    state.context_injected.append(
+                        f"你已连续 {self._read_streak} 次读取同一文件 {turn.action.path}。"
+                        "如果已获得所需内容,请继续下一步(写代码/测试/stop);"
+                        "如需读其他部分,用 offset/lines 指定未读的行区间,不要重复读取相同范围。")
+            else:
+                self._read_streak = 0
             vname = type(v).__name__
             # 连续被护栏拦截的动作计数(确定性,可单测):达到阈值后注入提示,
             # 防止 agent 在被拒操作上反复空转浪费轮数(真实 LLM 曾连续 5 次

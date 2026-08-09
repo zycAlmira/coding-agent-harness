@@ -27,22 +27,35 @@ def _resolve(path: str, root: Path) -> Path:
 
 
 def read_file(action: ReadFile, root: Path) -> ToolResult:
-    """读取文件文本:支持 offset/lines 按行区间读(大文件分段),超长截断;不存在则失败。"""
+    """读取文件文本:支持 offset/lines 按行区间读(大文件分段),超长截断;不存在则失败。
+
+    分段读取回灌行区间进度(已读区间/总行数/剩余+建议下次 offset)——防止
+    agent 反复读开头拼凑"完整内容"(真实历史曾 45+ 次重读同一文件)。
+    """
     p = _resolve(action.path, root)
     try:
         text = p.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        total = len(lines)
         if action.offset is not None or action.lines is not None:
             # 按行切片(offset 1-based):只取所需区间,不截断其余部分
-            lines = text.splitlines()
             start = (action.offset or 1) - 1
             if action.lines is not None:
                 end = start + action.lines
             else:
-                end = len(lines)
-            if start < 0 or start >= len(lines):
-                return ToolResult(ok=False, output="", error=f"offset 超出文件行数: {action.offset}")
-            return ToolResult(ok=True, output="\n".join(lines[start:end]))
-        return ToolResult(ok=True, output=_trunc(text))
+                end = total
+            if start < 0 or start >= total:
+                return ToolResult(ok=False, output="", error=f"offset 超出文件行数: {action.offset}(共 {total} 行)")
+            body = "\n".join(lines[start:end])
+            if start + 1 == 1 and end >= total:
+                # 单段覆盖全文:无需分段
+                return ToolResult(ok=True, output=f"已读 {total} 行(全文)。\n{body}")
+            # 回灌进度:已读区间 + 总行数 + 建议下次 offset(避免反复读开头)
+            return ToolResult(ok=True, output=(
+                f"已读第 {start + 1}-{end} 行(共 {total} 行)。"
+                f"如需继续读下一段,用 offset={end + 1} 参数。\n{body}"))
+        # 整读:回灌总行数,便于 agent 判断是否需分段
+        return ToolResult(ok=True, output=_trunc(f"(共 {total} 行)\n{text}"))
     except FileNotFoundError:
         return ToolResult(ok=False, output="", error=f"文件不存在: {action.path}")
     except OSError as e:

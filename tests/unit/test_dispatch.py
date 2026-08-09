@@ -16,7 +16,7 @@ def test_dispatch_write_then_read(tmp_path):
     cfg = _cfg(tmp_path)
     dispatch(WriteFile("a.txt", "hi"), cfg)
     r = dispatch(ReadFile("a.txt"), cfg)
-    assert r.ok and r.output == "hi"
+    assert r.ok and "hi" in r.output  # 整读回灌带行数前缀
 
 
 def test_dispatch_stop_returns_ok():

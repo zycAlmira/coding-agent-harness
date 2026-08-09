@@ -6,7 +6,7 @@ def test_write_then_read(tmp_path):
     w = write_file(WriteFile("a.txt", "hello"), tmp_path)
     assert w.ok
     r = read_file(ReadFile("a.txt"), tmp_path)
-    assert r.ok and r.output == "hello"
+    assert r.ok and "hello" in r.output  # 整读回灌带行数前缀(共 1 行)
 
 
 def test_read_missing_file_fails(tmp_path):
@@ -42,10 +42,12 @@ def test_read_file_offset_lines(tmp_path):
     from coding_agent_harness.tools.files import read_file
     p = tmp_path / "big.txt"
     p.write_text("\n".join(f"line {i}" for i in range(100)))
-    # offset=50 表示第 50 行(1-based)起读 3 行 → line 49/50/51
+    # offset=50 表示第 50 行(1-based)起读 3 行 → line 49/50/51;回灌带进度前缀
     r = read_file(ReadFile("big.txt", offset=50, lines=3), tmp_path)
     assert r.ok
-    assert r.output == "line 49\nline 50\nline 51"
+    assert "line 49\nline 50\nline 51" in r.output
+    assert "已读第 50-52 行" in r.output
+    assert "offset=53" in r.output
     # 缺省 offset/lines:读全文
     r = read_file(ReadFile("big.txt"), tmp_path)
     assert r.ok and "line 0" in r.output and "line 99" in r.output
@@ -83,3 +85,30 @@ def test_list_dir_recursive(tmp_path):
     r = list_dir(ListDir("."), tmp_path)
     assert r.ok and "a.txt" in r.output and "src" in r.output
     assert "K.java" not in r.output
+
+
+def test_read_file_offset_reports_progress(tmp_path):
+    """分段读取应回灌行区间进度(已读/总行数+建议下次 offset),否则 agent
+    反复读开头拼凑,永远得不到"完整内容"(真实历史 45+ 次重读同一文件)。"""
+    from coding_agent_harness.models import ReadFile
+    from coding_agent_harness.tools.files import read_file
+    p = tmp_path / "kwic.txt"
+    p.write_text("\n".join(f"line {i}" for i in range(100)))
+    r = read_file(ReadFile("kwic.txt", offset=1, lines=40), tmp_path)
+    assert r.ok
+    assert "line 0" in r.output and "line 39" in r.output
+    # 回灌告知进度:已读行区间 + 总行数 + 剩余 + 建议下次 offset
+    assert "行 1-40" in r.output or "1-40" in r.output
+    assert "100 行" in r.output
+    assert "offset=41" in r.output, "应建议下次从 offset=41 继续读"
+
+
+def test_read_file_full_reports_total(tmp_path):
+    """整读(无 offset)也应回灌总行数,方便 agent 判断是否需分段。"""
+    from coding_agent_harness.models import ReadFile
+    from coding_agent_harness.tools.files import read_file
+    p = tmp_path / "small.txt"
+    p.write_text("a\nb\nc")
+    r = read_file(ReadFile("small.txt"), tmp_path)
+    assert r.ok
+    assert "3 行" in r.output
