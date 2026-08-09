@@ -1060,6 +1060,11 @@
         updateStat('stStatus', '工作区已切换');
         loadFileTree();
         loadConfig();  // 刷新配置信息
+        // 工作区已切换:当前对话上下文绑定旧工作区,自动开始新对话避免错位
+        newSession();
+        const ec = document.getElementById('emptyChat');
+        if (ec) ec.insertAdjacentHTML('beforeend',
+          `<div class="sub" style="color:var(--accent)">✅ 已切换到 ${esc(d.path.split('/').pop()||'新')} 工作区,已自动开始新对话</div>`);
       }).catch(e => {
         if (e.message !== '取消') alert('选择工作目录失败: ' + e.message);
       });
