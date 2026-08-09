@@ -140,12 +140,15 @@ class AgentLoop:
             f"\n4. 本轮最多 {self.config.guardrails.max_rounds} 轮工具调用。请提前规划:一次读齐所需文件、"
             "避免重复跑相同测试、避免重复执行已成功的操作,确保在轮数内完成任务。"
             "\n\n## 意图分流"
-            "\n- 列文件/读文件/问问题:用对应工具或直接回答,完成后 stop;不要跑测试。"
+            "\n- 「列出文件/有哪些文件」:调 list_dir → 直接回复文件名列表 → stop。**不要读文件内容,不要深入子目录,不要跑测试,不要用 shell。**"
+            "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**"
             "\n- 修复/改代码:读→改→跑测试→总结→stop;先看懂再改。"
             "\n- 只跑指定测试:run_tests 带 path 参数。"
             "\n- 分析/评估项目:读 1-3 个关键文件→给出分析→stop;不改代码,不跑测试(除非用户要求)。"
             "\n- 衔接词(继续/然后呢/为什么):基于上一步结果继续;上一步失败则修复重测,完成则总结。"
             "\n- 多任务(先…再…):逐个完成,全部完成后统一总结。"
+            "\n\n## shell 命令不可用"
+            "\n- shell 命令需要人工审批,当前模式通常不可执行。**不要尝试 grep/find/cat/ls 等 shell 命令查找文件**——用 read_file/list_dir 即可。被拦截后不要换命令反复尝试。"
             "\n\n## 严禁"
             "\n- 修改测试文件(测试断言是真理)。"
             "\n- 用户只要列文件/看文件,你却读内容或跑测试。"
@@ -318,8 +321,19 @@ class AgentLoop:
             # 非 Respond 的工具调用:重置连续 Respond 计数。允许 Respond→Tool→Respond 模式。
             self._consecutive_responds = 0
             vname = type(v).__name__
+            # 连续被护栏拦截的动作计数(确定性,可单测):达到阈值后注入提示,
+            # 防止 agent 在被拒操作上反复空转浪费轮数(真实 LLM 曾连续 5 次
+            # 尝试被拒的 shell 命令直至轮数耗尽)。
+            if vname in ("Deny", "NeedsApproval") and not (vname == "NeedsApproval" and self.hitl_enabled):
+                self._rejected_streak = getattr(self, "_rejected_streak", 0) + 1
+                if self._rejected_streak >= 3:
+                    state.context_injected.append(
+                        "你已连续多次尝试被护栏拦截的动作。请停止尝试被拦截的操作,"
+                        "改用可用工具(read_file/list_dir/write_file)或直接文字回复用户。")
+            else:
+                self._rejected_streak = 0
             if vname == "Deny":
-                tr = ToolResult(ok=False, output="", error=f"被护栏拒绝:{v.reason}")
+                tr = ToolResult(ok=False, output="", error=f"被护栏拒绝:{v.reason}。该命令被禁止,不要重复尝试,请改用其他方式。")
                 fb = None
             elif vname == "NeedsApproval":
                 if self.hitl_enabled:
@@ -336,8 +350,10 @@ class AgentLoop:
                         tr = ToolResult(ok=False, output="", error=f"{prefix}:{v.reason}")
                         fb = None
                 else:
-                    # 非 HITL:回灌"需审批"字符串,不挂起(保持 Task 15 行为)
-                    tr = ToolResult(ok=False, output="", error=f"需人工审批:{v.reason}")
+                    # 非 HITL:回灌"需审批"字符串,不挂起(保持 Task 15 行为)。
+                    # 明确告知该动作类型当前不可执行、不要重复尝试——真实 LLM 曾
+                    # 在被拒后换命令反复尝试,白白消耗轮数。
+                    tr = ToolResult(ok=False, output="", error=f"需人工审批:{v.reason}。该动作类型当前不可执行,不要重复尝试,请改用 read_file/list_dir/write_file 或直接文字回复。")
                     fb = None
             else:
                 tr = self.dispatch(turn.action, self.config)

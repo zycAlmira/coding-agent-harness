@@ -274,3 +274,62 @@ def test_system_prompt_mentions_round_limit(tmp_path):
     sys_content = msgs[0].content
     assert "20" in sys_content, "系统提示词应告知轮数上限"
     assert "轮" in sys_content
+
+
+def test_system_prompt_list_dir_stops_exploration(tmp_path):
+    """「列出文件内容」分流应强化:回复文件名列表后 stop,不读内容/不探索子目录。"""
+    from coding_agent_harness.core.state import LoopState
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    loop = AgentLoop(llm=MockLLMClient([]), config=cfg, memory=mem)
+    sys_content = loop._build_messages("任务", LoopState())[0].content
+    assert "列出文件" in sys_content
+    assert "不要探索子目录" in sys_content or "不要深入" in sys_content, "提示词应禁止深入探索"
+    assert "shell" in sys_content and "不要" in sys_content, "提示词应告知 shell 不可用"
+
+
+def test_rejected_actions_streak_prompts(tmp_path):
+    """连续 3 次动作被护栏拦截 → 注入「停止尝试被拦截操作」提示(确定性可测)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import RunShell
+    class _Cap:
+        def __init__(self):
+            self.received = []
+        def complete(self, messages, tools, state):
+            self.received.append([m.content for m in messages])
+            return MockLLMClient([
+                {"when": "round 1", "action": RunShell("grep x"), "intent": "查找"},
+                {"when": "round 2", "action": RunShell("find . -name *.java"), "intent": "查找"},
+                {"when": "round 3", "action": RunShell("cat KWIC.java"), "intent": "查看"},
+                {"when": "always", "action": Stop("done"), "intent": "完成"},
+            ]).complete(messages, tools, state)
+    cap = _Cap()
+    loop = AgentLoop(llm=cap, config=cfg, memory=mem)
+    result = loop.run(task="列出文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    # 3 次全被拒,注入提示后仍继续,最终 Stop 结束
+    assert result.outcome == "stopped"
+    flat = "\n".join("\n".join(c) for c in cap.received)
+    assert "连续" in flat and "拦截" in flat, "应注入连续被拦截提示(第 4 轮消息)"
+
+
+def test_needs_approval_fallback_tells_agent_not_to_retry(tmp_path):
+    """非 HITL 下 NeedsApproval 回灌应明确「不要重复尝试该动作」。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import RunShell
+    mock = MockLLMClient([
+        {"when": "round 1", "action": RunShell("grep x"), "intent": "查找"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    loop.run(task="列出文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    rejected = [m.content for m in loop.conversation_history if "需人工审批" in m.content]
+    assert rejected, "应存在 NeedsApproval 的回灌消息"
+    assert "不要重复尝试" in rejected[0], f"回灌应告知不要重复尝试: {rejected[0]}"
