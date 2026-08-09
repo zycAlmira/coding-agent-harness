@@ -260,3 +260,17 @@ def test_max_rounds_stop_emits_fallback(tmp_path):
     assert result.outcome == "max_rounds"
     texts = [e["text"] for e in events if e["type"] == "response"]
     assert texts, "max_rounds 停机且无回复时应发兜底"
+
+
+def test_system_prompt_mentions_round_limit(tmp_path):
+    """系统提示词应告知 LLM 轮数上限,并促使其规划工具调用(避免轮次耗尽)。"""
+    from coding_agent_harness.core.state import LoopState
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws, max_rounds=20)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    loop = AgentLoop(llm=MockLLMClient([]), config=cfg, memory=mem)
+    msgs = loop._build_messages("任务", LoopState())
+    sys_content = msgs[0].content
+    assert "20" in sys_content, "系统提示词应告知轮数上限"
+    assert "轮" in sys_content

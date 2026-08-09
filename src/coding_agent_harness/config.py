@@ -20,7 +20,7 @@ class LLMConfig:
 class GuardrailsConfig:
     """治理护栏配置:回合上限、重复类别处置、无变化停机、审批超时、shell 黑白名单。"""
 
-    max_rounds: int = 8
+    max_rounds: int = 20
     same_category_prompt_at: int = 2
     same_category_stop_at: int = 3
     no_change_stop_at: int = 2

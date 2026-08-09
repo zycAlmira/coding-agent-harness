@@ -380,7 +380,6 @@
     let turnCount = 0;
     let seqId = 0;                       // 全局自增 id(替代 Date.now(),防同毫秒冲突)
     let typingJobs = {};                 // elementId -> interval(打字机任务表,支持跳过)
-    let pendingSteps = [];               // 当前 agent 轮累积的步骤
 
     function nid() { return ++seqId; }
 
@@ -409,7 +408,6 @@
 
       // 重置统计
       roundCount = 0; denyCount = 0; approveCount = 0; toolCount = 0;
-      pendingSteps = [];
       resetPanel();
       updateStat('stStatus', '运行中…');
 
@@ -440,11 +438,6 @@
     // ═══════ 事件处理 ═══════
     function handleEvent(e) {
       if (e.type === 'loop_stopped') {
-        // 把之前累积的步骤渲染出来
-        if (pendingSteps.length > 0) {
-          appendToolSteps(pendingSteps);
-          pendingSteps = [];
-        }
         if (es) es.close();
         document.getElementById('btnSend').disabled = false;
         updateStat('stStatus', e.outcome === 'stopped' ? '完成' : '终止');
@@ -480,11 +473,6 @@
 
       if (e.type === 'response') {
         // agent 文本回复:独立气泡,打字机流式渲染
-        // 先把之前的步骤渲染出来
-        if (pendingSteps.length > 0) {
-          appendToolSteps(pendingSteps);
-          pendingSteps = [];
-        }
         appendAgentBubble(e.text || '');
         updateStat('stAction', '💬 回复');
         return;
@@ -511,12 +499,13 @@
         document.getElementById('stFeedback').className = 'sv ' + (fb.status === 'PASS' ? 'ok' : 'bad');
       }
 
-      pendingSteps.push({
+      // 即时渲染:工具胶囊实时出现(不攒批到任务结束),用户能实时看到 agent 的动作
+      appendToolSteps([{
         icon, actionName, intent: e.intent || '',
         verdict, stepClass,
         ok: e.ok, fb,
         id: 'step-' + nid(),
-      });
+      }]);
     }
 
     // ═══════ 渲染函数 ═══════
@@ -575,11 +564,6 @@
 
     function appendApproval(e) {
       const chat = document.getElementById('chat-messages');
-      // 先把待渲染步骤输出
-      if (pendingSteps.length > 0) {
-        appendToolSteps(pendingSteps);
-        pendingSteps = [];
-      }
       const id = 'appr-' + e.approval_id;
       chat.insertAdjacentHTML('beforeend', `<div class="approval-inline" id="${id}">
         <div style="font-weight:600">⚠️ 需要审批</div>
@@ -618,7 +602,6 @@
       clearTyping();
       currentConvId = null;
       roundCount = 0; denyCount = 0; approveCount = 0; toolCount = 0; turnCount = 0;
-      pendingSteps = [];
       const chat = document.getElementById('chat-messages');
       chat.innerHTML = `<div class="empty-chat" id="emptyChat">
         <div class="empty-avatar"><svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M12 3c.9 5.4 3.6 8.1 9 9-5.4.9-8.1 3.6-9 9-.9-5.4-3.6-8.1-9-9 5.4-.9 8.1-3.6 9-9z"/></svg></div>
@@ -663,7 +646,6 @@
       if (es) { es.close(); es = null; }
       clearTyping();
       currentConvId = convId;
-      pendingSteps = [];
       roundCount = 0; denyCount = 0; approveCount = 0; toolCount = 0; turnCount = 0;
 
       fetch(`/api/conversations/${convId}`).then(r => r.json()).then(conv => {

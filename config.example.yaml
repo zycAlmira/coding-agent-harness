@@ -6,7 +6,7 @@ llm:
   model: deepseek-chat
 
 guardrails:
-  max_rounds: 8
+  max_rounds: 20
   same_category_prompt_at: 2
   same_category_stop_at: 3
   no_change_stop_at: 2
