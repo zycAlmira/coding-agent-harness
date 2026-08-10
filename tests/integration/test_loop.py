@@ -437,9 +437,9 @@ def test_repeated_read_same_file_prompt(tmp_path):
     cap = _Cap()
     loop = AgentLoop(llm=cap, config=cfg, memory=mem)
     result = loop.run(task="看文件", ts_provider=lambda: "2026-07-22T00:00:00")
-    assert result.outcome == "stopped"
+    assert result.outcome == "stuck", "连续 4 次重复读应 stuck 停机"
     flat = "\n".join(cap.received)
-    assert "缓存" in flat, "连续重复读同一文件应注入缓存提示"
+    assert "缓存" in flat, "重复读应注入缓存提示"
 
 
 def test_repeated_read_prompt_at_2(tmp_path):
@@ -534,3 +534,60 @@ def test_repeat_read_returns_cached_content(tmp_path):
     loop.run(task="读文件", ts_provider=lambda: "2026-07-22T00:00:00")
     flat = "\n".join(cap.received)
     assert "缓存" in flat, "重复读应提示已缓存"
+
+
+def test_repeat_read_returns_cache_content_and_prompts(tmp_path):
+    """重复读命中缓存 → 回灌缓存内容(agent 立刻看到)而非跳过;连续命中
+    注入强提示。防止 agent 持续请求读已缓存文件空转到轮数耗尽。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "kwic.java").write_text("line1\nline2\nline3")
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    class _Cap:
+        def __init__(self): self.received = []
+        def complete(self, messages, tools, state):
+            self.received.append("\n".join(m.content for m in messages))
+            return MockLLMClient([
+                {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+                {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+                {"when": "always", "action": Stop("done"), "intent": "完成"},
+            ]).complete(messages, tools, state)
+    cap = _Cap()
+    loop = AgentLoop(llm=cap, config=cfg, memory=mem)
+    result = loop.run(task="读文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    flat = "\n".join(cap.received)
+    assert "缓存" in flat, "重复读应提示缓存"
+    # 缓存命中后,agent 的历史消息应包含缓存内容(回灌而非跳过)
+    hist = [m.content for m in loop.conversation_history if "[上一步] ReadFile" in m.content]
+    assert any("line1" in c for c in hist), f"缓存命中应回灌内容: {hist[:2]}"
+
+
+def test_repeat_read_cache_hit_3_times_strong_prompt(tmp_path):
+    """连续 3 次命中缓存(agent 反复请求读同一文件)→ 注入强停机提示,
+    防止空转到轮数耗尽(真实历史 18 步 max_rounds 根因)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "kwic.java").write_text("line1\nline2\nline3")
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    class _Cap:
+        def __init__(self): self.received = []
+        def complete(self, messages, tools, state):
+            self.received.append("\n".join(m.content for m in messages))
+            return MockLLMClient([
+                {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+                {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+                {"when": "round 3", "action": ReadFile("kwic.java"), "intent": "三读"},
+                {"when": "round 4", "action": ReadFile("kwic.java"), "intent": "四读"},
+                {"when": "always", "action": Stop("done"), "intent": "完成"},
+            ]).complete(messages, tools, state)
+    cap = _Cap()
+    loop = AgentLoop(llm=cap, config=cfg, memory=mem)
+    result = loop.run(task="读文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stuck", "连续 3 次命中缓存应 stuck 停机"
+    flat = "\n".join(cap.received)
+    assert "缓存" in flat, "重复读应注入缓存提示"

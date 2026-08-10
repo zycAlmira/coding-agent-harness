@@ -264,10 +264,36 @@ class AgentLoop:
             hit = (read_rows is None and cached_text) or (
                 read_rows is not None and cached_rows and read_rows <= cached_rows)
             if hit:
+                # 缓存命中:不回灌实际执行,但写入一条历史消息告知「已缓存」,
+                # 让 agent 有依据继续(否则它下一轮又请求读同一文件 → 空转到
+                # 轮数耗尽)。连续命中达 3 次注入强停机提示。
+                self._cache_hits = getattr(self, "_cache_hits", 0) + 1
                 state.context_injected.append(
                     f"文件 {action.path} 已在前面读取过(缓存)。其内容在对话历史中,"
                     "不要重复读取;请基于已读内容继续下一步(写代码/测试/stop),"
                     "如需定位代码用 search_file,如需读未读部分用 offset 指定新行区间。")
+                if self._cache_hits >= 3:
+                    # 连续 3 次命中缓存:agent 陷入"读已缓存文件"死循环,直接停机
+                    # (继续问 LLM 也是空转,每次都是网络请求,极慢且无意义)。
+                    state.context_injected.append(
+                        f"你已连续 {self._cache_hits} 次请求读取同一已缓存文件 {action.path}。"
+                        "请立即停止读取,基于已读内容执行任务:写代码、跑测试,或调用 stop 总结。")
+                    if not self._any_response:
+                        self.on_event({"type": "response", "text": "(agent 陷入重复读取,已自动停止)"})
+                    return "stuck", state, None
+                self._append_history(Message(
+                    "user",
+                    f"[上一步] ReadFile: {intent}\n[结果]\n(文件 {action.path} 已在前面读取过,内容见对话历史,未重复执行)\n\n"
+                    "请基于已读内容继续下一步。"
+                ))
+                # 缓存命中不产生新动作,但轮数仍在增长——必须检查停机,否则
+                # LLM 固执请求读同一文件会绕过 decide_stop 无限循环(真实 bug)。
+                stop = decide_stop(state, self.config)
+                if stop:
+                    if not self._any_response:
+                        note = {"max_rounds": "已达到最大执行轮数", "stuck": "连续失败无进展"}.get(stop, stop)
+                        self.on_event({"type": "response", "text": f"({note},停止执行)"})
+                    return stop, state, None
                 return None, state, None
             # 未命中:记录本次读取(整读标记全文已读;分段累加已读行)
             if read_rows is None:
