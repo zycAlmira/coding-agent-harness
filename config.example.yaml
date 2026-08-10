@@ -14,7 +14,7 @@ guardrails:
   approval_timeout_sec: 300
   shell_blacklist: [rm -rf, git push, sudo, curl, wget, chmod 777,
                    "del /s", "rmdir /s", "Remove-Item -Recurse", format, diskpart]
-  shell_whitelist: [pytest, ruff, mypy]
+  shell_whitelist: [pytest, ruff, mypy, mvn, gradle, javac, java, npm, npx, node, yarn, go, git]
 
 feedback:
   pytest_args: [--tb=short, -p, no:cacheprovider, --no-header, -q]

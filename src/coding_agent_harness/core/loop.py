@@ -67,10 +67,11 @@ _AGENT_TOOLS = [
         "properties": {**_INTENT_PROP, "cmd": {"type": "string", "description": "要执行的命令"}},
         "required": ["cmd", "intent"],
     }),
-    ToolSchema("run_tests", "运行测试(pytest)", {
+    ToolSchema("run_tests", "运行测试,支持多语言", {
         "type": "object",
         "properties": {
             "path": {"type": "string", "description": "可选:只运行指定测试文件或目录(相对项目根,如 test_calc.py);省略则运行全部测试"},
+            "test_command": {"type": "string", "description": "可选:测试命令。Python 用 pytest(默认);Java 用 mvn test;Node 用 npm test;Go 用 go test"},
             **_INTENT_PROP,
         },
         "required": ["intent"],

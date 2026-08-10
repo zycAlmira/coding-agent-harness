@@ -14,7 +14,8 @@ def _cfg(blacklist=None, whitelist=None, root="."):
         "llm": {"base_url": "x", "model": "m"},
         "guardrails": {
             "shell_blacklist": blacklist or ["rm -rf"],
-            "shell_whitelist": whitelist or ["pytest"],
+            # None → 不写该键,取 config 默认白名单(扩展后的多语言构建命令)
+            **({"shell_whitelist": whitelist} if whitelist is not None else {}),
         },
     }
     f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False)
@@ -66,3 +67,17 @@ def test_read_and_tests_and_stop_allowed():
     assert isinstance(guardrail(RunTests(), cfg), Allow)
     assert isinstance(guardrail(Stop("done"), cfg), Allow)
     assert isinstance(guardrail(ListDir("."), cfg), Allow)
+
+
+def test_whitelist_multi_language_build():
+    """白名单扩展:Java/Node/Go 构建命令可执行(agent 自主组织多语言构建)。"""
+    for cmd in ["mvn test", "mvn -q compile", "gradle test", "javac -version",
+                "npm test", "npm run build", "node script.js", "yarn test",
+                "go test ./...", "go build", "git status", "git diff"]:
+        assert isinstance(guardrail(RunShell(cmd), _cfg()), Allow), f"{cmd} 应放行"
+
+
+def test_whitelist_dangerous_still_denied():
+    """危险命令仍被黑名单拦截,白名单扩展不削弱安全。"""
+    for cmd in ["rm -rf /", "mvn test && rm -rf /", "sudo rm -rf"]:
+        assert isinstance(guardrail(RunShell(cmd), _cfg()), Deny), f"{cmd} 应拦截"

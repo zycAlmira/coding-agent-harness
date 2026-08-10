@@ -62,6 +62,9 @@ class Validator:
     @staticmethod
     def parse(run: PytestRun, max_excerpt_lines: int = 8) -> Feedback:
         stdout = run.stdout.replace("\r\n", "\n").replace("\r", "\n")
+        # Maven surefire 输出(Java 项目,run_tests 用 mvn test 产生)走独立解析
+        if "Tests run:" in stdout and ("surefire" in stdout or "Results:" in stdout):
+            return _parse_maven(run, max_excerpt_lines)
         lines = stdout.splitlines()
         failed: list[FailedTest] = []
         summary_bits: list[str] = []
@@ -124,6 +127,60 @@ class Validator:
                 passed = int(b.split()[0])
         summary = ", ".join(summary_bits) if summary_bits else stdout.strip().splitlines()[-1]
         return Feedback(status=status, failed_tests=failed, passed_count=passed, summary=summary)
+
+
+def _parse_maven(run: PytestRun, max_excerpt_lines: int) -> Feedback:
+    """解析 Maven surefire 测试输出(Java 项目,test_command='mvn test')。
+
+    格式:
+      [ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0 ... <<< FAILURE!
+      [ERROR] testShift  Time elapsed: 0.02 s  <<< FAILURE!
+      KWICTest.java:45: expected:<[2, 1]> but was:<[1, 2]>
+      [INFO] Results:
+      [INFO] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0
+    确定性纯函数,与 pytest 解析同一 Feedback 结构。
+    """
+    stdout = run.stdout.replace("\r\n", "\n").replace("\r", "\n")
+    lines = stdout.splitlines()
+    # 汇总:Results: 下的 "Tests run: N, Failures: F, Errors: E, Skipped: S"
+    total = failures = errors = skipped = 0
+    in_results = False
+    for ln in lines:
+        if "Results:" in ln:
+            in_results = True
+            continue
+        if in_results and "Tests run:" in ln:
+            m = re.search(r"Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)", ln)
+            if m:
+                total, failures, errors, skipped = map(int, m.groups())
+                break
+    failed: list[FailedTest] = []
+    for i, ln in enumerate(lines):
+        # 失败块:[ERROR] testXxx  Time elapsed: ... <<< FAILURE!
+        m = re.search(r"\[ERROR\]\s+(\w+)\s+Time elapsed:.*<<< FAILURE!", ln)
+        if not m:
+            continue
+        name = m.group(1)
+        # 后续行找 file:line 与 expected/assert 差异
+        file, line, diff = "", 0, None
+        for j in range(i + 1, min(i + 5, len(lines))):
+            fl = re.match(r"^([\w./-]+\.java):(\d+):\s*(.*)$", lines[j].strip())
+            if fl:
+                file, line = fl.group(1), int(fl.group(2))
+                if fl.group(3):
+                    diff = fl.group(3)
+                break
+            if diff is None and ("expected" in lines[j].lower() or "assert" in lines[j].lower()):
+                diff = lines[j].strip()
+        failed.append(FailedTest(
+            nodeid=name, category=FailureCategory.AssertionFailure if (diff and "assert" in diff.lower() or "expected" in diff.lower()) else FailureCategory.Unknown,
+            file=file, line=line, traceback_excerpt="\n".join(lines[i:i + max_excerpt_lines]),
+            assertion_diff=diff,
+        ))
+    passed = max(0, total - failures - errors - skipped)
+    summary = f"{failures + errors} failed, {passed} passed, {skipped} skipped"
+    status = "PASS" if run.exit_code == 0 and not failed else "FAIL"
+    return Feedback(status=status, failed_tests=failed, passed_count=passed, summary=summary)
 
 
 def _extract_name(middle: str) -> str:

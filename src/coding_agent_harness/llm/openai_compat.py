@@ -13,7 +13,7 @@ _ACTION_BUILDERS = {
     "write_file": lambda a: WriteFile(a["path"], a["content"]),
     "delete_file": lambda a: DeleteFile(a["path"]),
     "run_shell": lambda a: RunShell(a["cmd"]),
-    "run_tests": lambda a: RunTests(a.get("path")),
+    "run_tests": lambda a: RunTests(a.get("path"), a.get("test_command")),
     "read_file": lambda a: ReadFile(a["path"], a.get("offset"), a.get("lines")),
     "list_dir": lambda a: ListDir(a["path"], a.get("recursive")),
     "search_file": lambda a: SearchFile(a["path"], a["pattern"], a.get("context")),

@@ -31,7 +31,16 @@ class GuardrailsConfig:
     no_change_stop_at: int = 2
     approval_timeout_sec: int = 300
     shell_blacklist: list[str] = field(default_factory=lambda: ["rm -rf"])
-    shell_whitelist: list[str] = field(default_factory=lambda: ["pytest"])
+    # 白名单(精确首词匹配):测试/构建/只读命令,agent 可在护栏内自主组织多语言构建;
+    # 危险命令(rm -rf 等)仍在黑名单,其余命令需审批。
+    shell_whitelist: list[str] = field(
+        default_factory=lambda: [
+            "pytest", "ruff", "mypy",          # Python 测试/静态检查
+            "mvn", "gradle", "javac", "java",   # Java 构建/编译/运行
+            "npm", "npx", "node", "yarn",       # Node 生态
+            "go",                                # Go
+            "git",                               # git status/diff/log 等只读
+        ])
 
 
 @dataclass(frozen=True)

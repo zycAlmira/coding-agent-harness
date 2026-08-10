@@ -50,3 +50,21 @@ def test_run_tests_path_escape_rejected():
     import pytest as pt
     with pt.raises(ValueError):
         run_tests(_cfg(FIX), "../outside.py")
+
+
+def test_run_tests_test_command_mvn(tmp_path):
+    """test_command 支持 Maven(mvn test):命令按 test_command 执行。"""
+    # 用 shell 命令伪造 mvn(验证 test_command 被正确传入执行)
+    cfg = _cfg(tmp_path)
+    r = run_tests(cfg, test_command="echo FAKE_MVN_RAN")
+    assert "FAKE_MVN_RAN" in r.stdout
+
+
+def test_run_tests_default_command_pytest(tmp_path):
+    """缺省 test_command 仍是 pytest(保持默认行为)。"""
+    import shutil
+    from pathlib import Path
+    FIX = Path(__file__).parent.parent.parent / "fixtures" / "sample_pkg"
+    shutil.copytree(FIX, tmp_path / "ws", dirs_exist_ok=True)
+    r = run_tests(_cfg(tmp_path / "ws"))
+    assert "test_add" in r.stdout  # pytest 输出

@@ -96,3 +96,18 @@ def test_parametrized_nodeid_with_spaces():
     for ft in fb.failed_tests:
         assert ft.category is FailureCategory.AssertionFailure, ft.category
         assert ft.assertion_diff is not None and "==" in ft.assertion_diff, ft.assertion_diff
+
+
+def test_maven_surefire_output_parsed():
+    """Java(Maven surefire)测试输出解析:汇总行 + 失败测试名/行号/断言差异。"""
+    fb = Validator.parse(_run("mvn_fail.txt"))
+    assert fb.status == "FAIL"
+    assert fb.passed_count == 2          # 3 个运行,1 失败 → 2 通过
+    assert len(fb.failed_tests) == 1
+    ft = fb.failed_tests[0]
+    assert "testShift" in ft.nodeid
+    assert ft.category is FailureCategory.AssertionFailure
+    assert "KWICTest.java" in ft.file
+    assert ft.line == 45
+    assert "expected" in (ft.assertion_diff or "") or "[2, 1]" in (ft.assertion_diff or "")
+    assert "1 failed" in fb.summary or "Failures: 1" in fb.summary
