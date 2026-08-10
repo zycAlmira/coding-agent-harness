@@ -437,9 +437,9 @@ def test_repeated_read_same_file_prompt(tmp_path):
     cap = _Cap()
     loop = AgentLoop(llm=cap, config=cfg, memory=mem)
     result = loop.run(task="看文件", ts_provider=lambda: "2026-07-22T00:00:00")
-    assert result.outcome == "stuck", "连续 4 次重复读应 stuck 停机"
+    assert result.outcome == "stopped", f"重复读应回灌缓存后正常继续: {result.outcome}"
     flat = "\n".join(cap.received)
-    assert "缓存" in flat, "重复读应注入缓存提示"
+    assert "完整读取" in flat, "重复读应回灌完整缓存内容提示"
 
 
 def test_repeated_read_prompt_at_2(tmp_path):
@@ -588,9 +588,9 @@ def test_repeat_read_cache_hit_3_times_strong_prompt(tmp_path):
     cap = _Cap()
     loop = AgentLoop(llm=cap, config=cfg, memory=mem)
     result = loop.run(task="读文件", ts_provider=lambda: "2026-07-22T00:00:00")
-    assert result.outcome == "stuck", "连续 3 次命中缓存应 stuck 停机"
+    assert result.outcome == "stopped", f"重复读应回灌缓存后正常继续: {result.outcome}"
     flat = "\n".join(cap.received)
-    assert "缓存" in flat, "重复读应注入缓存提示"
+    assert "完整读取" in flat, "重复读应回灌完整缓存内容提示"
 
 
 def test_cache_resets_between_tasks(tmp_path):
@@ -674,3 +674,50 @@ def test_cache_hits_reset_same_loop_instance(tmp_path):
     r2 = loop.run(task="任务2", ts_provider=lambda: "2026-07-22T00:00:00")
     assert r2.outcome == "stopped", f"任务2不应 stuck: {r2.outcome}"
     assert loop._cache_hits == 0, f"任务2开始应重置缓存命中计数: {loop._cache_hits}"
+
+
+def test_repeat_read_returns_full_cached_content(tmp_path):
+    """完整读过后重复读 → 历史消息回灌缓存全文(agent 真正看到完整内容),
+    而非仅提示"已读过"——满足"看到完整内容"的需求,任务可继续。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "kwic.java").write_text("\n".join(f"line{i}" for i in range(10)))
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    mock = MockLLMClient([
+        {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+        {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    result = loop.run(task="读文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    # 第 2 次读(缓存命中)回灌了完整内容:历史含 line0-line9
+    hist = [m.content for m in loop.conversation_history if "已完整读取" in m.content]
+    assert hist, "缓存命中应回灌完整内容历史消息"
+    assert all(f"line{i}" in hist[0] for i in range(10)), f"回灌应含全部行: {hist[0][:200]}"
+
+
+def test_partial_reads_accumulate_to_full(tmp_path):
+    """分段读取累积:多段覆盖全部行后 → full,重复读回灌全部段拼接内容。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "big.java").write_text("\n".join(f"L{i}" for i in range(100)))
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    mock = MockLLMClient([
+        {"when": "round 1", "action": ReadFile("big.java", offset=1, lines=50), "intent": "读1"},
+        {"when": "round 2", "action": ReadFile("big.java", offset=51, lines=50), "intent": "读2"},
+        {"when": "round 3", "action": ReadFile("big.java", offset=1, lines=50), "intent": "再读1"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    result = loop.run(task="读大文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    assert loop._read_cache["big.java"]["full"], "两段覆盖全部行后应 full"
+    # 第 3 次读(已 full)回灌累积内容:历史含 L0 与 L99
+    hist = [m.content for m in loop.conversation_history if "已完整读取" in m.content]
+    assert hist, "full 后重复读应回灌累积内容"
+    assert "L0" in hist[0] and "L99" in hist[0], "回灌应含首尾行"
