@@ -325,6 +325,12 @@ class AgentLoop:
         if getattr(self, "_need_cache_record", None) is action:
             self._record_read_cache(action, tr)
             self._need_cache_record = None
+        # 探索/修复动作(非 RunTests)重置 no_change_streak:agent 在推进
+        # (读文件/写代码/找配置),测试连续失败不该算"无变化"——否则写完代码
+        # 跑测试失败 2 次就被 stuck 误杀(真实历史:写完填空→测试失败→ListDir
+        # 找 pom→再测试失败,agent 在修复却被终止)。
+        if not isinstance(action, RunTests):
+            state.no_change_streak = 0
         # 合并为单个 action 事件:动作名 + 护栏判定 + 结果 + 反馈 + 目标路径
         # (path 让前端/历史可见 agent 操作对象,否则 94 次 ReadFile 全显示
         # "ReadFile" 无法诊断在重复读哪个文件)

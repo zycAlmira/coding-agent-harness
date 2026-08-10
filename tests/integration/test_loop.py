@@ -721,3 +721,48 @@ def test_partial_reads_accumulate_to_full(tmp_path):
     hist = [m.content for m in loop.conversation_history if "已完整读取" in m.content]
     assert hist, "full 后重复读应回灌累积内容"
     assert "L0" in hist[0] and "L99" in hist[0], "回灌应含首尾行"
+
+
+def test_write_fix_resets_no_change_streak(tmp_path):
+    """写完代码修复后测试失败,不应被 no_change 误杀 stuck——
+    修复动作(WriteFile)重置 no_change_streak(真实历史:写完填空→测试
+    失败→应继续修复而非 stuck 终止)。"""
+    import shutil
+    shutil.copytree(FIX, tmp_path / "ws", dirs_exist_ok=True)
+    ws = tmp_path / "ws"
+    mock = MockLLMClient([
+        {"when": "round 1", "action": WriteFile("calc.py", "def add(a,b):\n    return a+b+1\n"), "intent": "修复"},
+        {"when": "round 2", "action": RunTests(), "intent": "验证"},
+        {"when": "round 3", "action": WriteFile("calc.py", "def add(a,b):\n    return a+b+2\n"), "intent": "再修复"},
+        {"when": "round 4", "action": RunTests(), "intent": "再验证"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    result = loop.run(task="修 calc", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped", f"修复后测试失败不应 stuck: {result.outcome}"
+
+
+def test_explore_action_resets_no_change(tmp_path):
+    """两次测试失败之间 agent 做了探索/修复动作(ListDir 找 pom.xml)→
+    no_change 应重置,不误 stuck(真实历史:写完代码→测试失败→ListDir
+    找 pom→再测试失败,却被 stuck 终止)。"""
+    import shutil
+    shutil.copytree(FIX, tmp_path / "ws", dirs_exist_ok=True)
+    ws = tmp_path / "ws"
+    from coding_agent_harness.models import ListDir
+    mock = MockLLMClient([
+        # round1 写错实现(失败)
+        {"when": "round 1", "action": WriteFile("calc.py", "def add(a,b):\n    return 0\n"), "intent": "改"},
+        {"when": "round 2", "action": RunTests(), "intent": "验证"},       # FAIL (no_change=1)
+        {"when": "round 3", "action": ListDir("."), "intent": "找测试配置"},  # 探索:应重置 no_change
+        {"when": "round 4", "action": WriteFile("calc.py", "def add(a,b):\n    return a+b+2\n"), "intent": "再改"},
+        {"when": "round 5", "action": RunTests(), "intent": "再验证"},      # 仍 FAIL:若没重置→no_change=2→stuck
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    result = loop.run(task="修 calc", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped", f"探索/修复动作后测试失败不应 stuck: {result.outcome}"
