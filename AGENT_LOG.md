@@ -299,3 +299,14 @@
 - 端到端:search_file 一次找到所有 TODO 位置与上下文(替代 45 次逐段读)。
 - 验证:134 passed,lint 全过。
 - 教训 31:**"卡住"的根因常是工具集缺一个能力,而非提示词不够**——agent 反复做同一件事(读文件),是因为那是它唯一能"推进"的动作;补 search_file 这种"定位型"工具,从能力上让"找 TODO"变成一次调用,才是治本。**读历史先看动作类型分布,一眼看出"全在重复一类动作"就是工具集缺口信号。**
+
+## 2026-08-10 工具集多语言化(三层方案实施)
+
+- 触发:用户问「工具集是否需强化以满足多语言测试,或由 agent 主动组织命令」,确认按方案实施。
+- 方案(工具能力强化为主,护栏内给自由度,守住确定性核心):
+  1. **run_tests 加 test_command 参数**:pytest(默认)/mvn test/npm test/go test;字符串命令 shell 执行,path 越界校验保留
+  2. **校验器新增 Maven surefire 解析**(_parse_maven):识别汇总行、失败测试块、file:line、断言差异——确定性纯函数,与 pytest 同一 Feedback 结构(§A.4 不破:反馈永远来自校验器)
+  3. **run_shell 白名单扩展**:javac/java/mvn/gradle/npm/npx/node/yarn/go/git(精确首词匹配,rm -rf 仍拦截)
+- 端到端 Java 场景闭环:白名单放行 mvn test + 校验器解析 → testShift AssertionFailure @ KWICTest.java:45。
+- 验证:139 passed(新增 test_command/Maven 解析/白名单多语言/危险仍拦截),lint 全过。
+- 教训 32:**多语言支持要在"确定性反馈"边界内做**——run_tests 多语言化后,反馈仍由校验器解析(test_command 只是换执行器,不是换判定),§A.4"移除 LLM 后机制可单测"不破;若放开让 agent 自己判断测试结果,主贡献就丢了。
