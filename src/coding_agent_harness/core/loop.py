@@ -460,6 +460,9 @@ class AgentLoop:
         # 已读文件缓存 {path: (已读行集合, 全文或摘要)}:重复读同一文件直接回灌
         # 缓存,不再空转重读(真实 LLM 曾 94 次重读同一文件)。
         self._read_cache: dict[str, tuple[set[int], str]] = {}
+        # 缓存命中计数必须任务开始时重置!否则跨任务累积(WebUI 续聊复用同一
+        # loop 实例)会误触发 stuck 停机(真实"意外终止"根因)。
+        self._cache_hits = 0
         while True:
             state.rounds += 1
             # 达到软上限(max_rounds):注入「尽快收尾」提示,不终止——复杂任务

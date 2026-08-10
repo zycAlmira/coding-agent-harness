@@ -591,3 +591,86 @@ def test_repeat_read_cache_hit_3_times_strong_prompt(tmp_path):
     assert result.outcome == "stuck", "连续 3 次命中缓存应 stuck 停机"
     flat = "\n".join(cap.received)
     assert "缓存" in flat, "重复读应注入缓存提示"
+
+
+def test_cache_resets_between_tasks(tmp_path):
+    """缓存命中计数跨任务必须重置——否则上一个任务的命中数带到下个任务,
+    误触发 stuck(意外终止根因 1)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "kwic.java").write_text("line1\nline2\nline3")
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    # 任务1:命中 1 次(读2次,第2次命中)→ _cache_hits=1
+    mock1 = MockLLMClient([
+        {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+        {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock1, config=cfg, memory=mem)
+    r1 = loop.run(task="任务1", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert r1.outcome == "stopped"
+    assert loop._cache_hits == 1
+    # 任务2:只命中 2 次(不达 3)→ 不应 stuck,应正常 stop
+    mock2 = MockLLMClient([
+        {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+        {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop2 = AgentLoop(llm=mock2, config=cfg, memory=mem)
+    r2 = loop2.run(task="任务2", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert r2.outcome == "stopped", f"任务2命中2次不应 stuck: {r2.outcome}"
+
+
+def test_truncated_read_not_fully_cached(tmp_path):
+    """整读被截断(文件超长)→ 不应标记"全文已读";后续 offset 分段读不该被
+    缓存拦截(意外终止根因 2:agent 合理读中段被误拦)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "big.java").write_text("\n".join(f"line{i}" for i in range(3000)))  # 超截断阈值
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    mock = MockLLMClient([
+        {"when": "round 1", "action": ReadFile("big.java"), "intent": "整读"},        # 被截断
+        {"when": "round 2", "action": ReadFile("big.java", offset=100, lines=50), "intent": "读中段"},  # 不该被拦
+        {"when": "round 3", "action": ReadFile("big.java", offset=200, lines=50), "intent": "读中段2"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock, config=cfg, memory=mem)
+    result = loop.run(task="读大文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped", f"分段读被误拦应不 stuck: {result.outcome}"
+    # 读中段应真正执行(历史含中段内容)
+    hist = [m.content for m in loop.conversation_history if "[上一步] ReadFile" in m.content]
+    assert any("line100" in c for c in hist), "offset 读中段应执行而非被缓存拦截"
+
+
+def test_cache_hits_reset_same_loop_instance(tmp_path):
+    """同一 loop 实例连续跑两个任务:任务1命中2次,任务2命中1次——
+    _cache_hits 必须任务开始时重置,否则累计 3 误触发 stuck(意外终止根因)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "kwic.java").write_text("line1\nline2\nline3")
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    # 任务1:读2次(第2次命中)→ _cache_hits=1
+    mock1 = MockLLMClient([
+        {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+        {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop = AgentLoop(llm=mock1, config=cfg, memory=mem)
+    r1 = loop.run(task="任务1", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert r1.outcome == "stopped"
+    assert loop._cache_hits == 1, f"任务1应命中1次: {loop._cache_hits}"
+    # 任务2(同实例):只读1次(无命中)→ _cache_hits 应重置为 0,不累计
+    mock2 = MockLLMClient([
+        {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+        {"when": "always", "action": Stop("done"), "intent": "完成"},
+    ])
+    loop.llm = mock2
+    r2 = loop.run(task="任务2", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert r2.outcome == "stopped", f"任务2不应 stuck: {r2.outcome}"
+    assert loop._cache_hits == 0, f"任务2开始应重置缓存命中计数: {loop._cache_hits}"
