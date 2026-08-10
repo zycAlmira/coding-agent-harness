@@ -1,7 +1,7 @@
 """文件工具。path 相对 root;围栏由 guardrail 负责。"""
 from __future__ import annotations
 from pathlib import Path
-from coding_agent_harness.models import ReadFile, WriteFile, DeleteFile, ListDir, ToolResult
+from coding_agent_harness.models import ReadFile, WriteFile, DeleteFile, ListDir, SearchFile, ToolResult
 
 # 输出最大字符数,超过则截断
 MAX_OUTPUT = 8000
@@ -87,6 +87,34 @@ def delete_file(action: DeleteFile, root: Path) -> ToolResult:
         return ToolResult(ok=False, output="", error=f"不存在: {action.path}")
     except OSError as e:
         return ToolResult(ok=False, output="", error=str(e))
+
+
+def search_file(action: SearchFile, root: Path) -> ToolResult:
+    """按内容搜索文件,返回匹配行+行号(可带上下文行)。
+
+    agent 定位 TODO/方法名/特定代码时用搜索,不必逐段读全文拼凑
+    (真实历史曾 45+ 次重读同一文件找 TODO,空转到轮数耗尽)。
+    """
+    p = _resolve(action.path, root)
+    try:
+        lines = p.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return ToolResult(ok=False, output="", error=f"文件不存在: {action.path}")
+    except OSError as e:
+        return ToolResult(ok=False, output="", error=str(e))
+    matches = []
+    for i, ln in enumerate(lines, 1):
+        if action.pattern.lower() in ln.lower():
+            if action.context:
+                lo = max(1, i - action.context)
+                hi = min(len(lines), i + action.context)
+                ctx = "\n".join(f"{j}: {lines[j-1]}" for j in range(lo, hi + 1))
+                matches.append(f"第 {i} 行(上下文):\n{ctx}")
+            else:
+                matches.append(f"第 {i} 行: {ln}")
+    if not matches:
+        return ToolResult(ok=True, output=f"{action.path} 无匹配 \"{action.pattern}\"")
+    return ToolResult(ok=True, output=f"{action.path} 匹配 \"{action.pattern}\" 共 {len(matches)} 处:\n" + "\n".join(matches))
 
 
 def list_dir(action: ListDir, root: Path) -> ToolResult:

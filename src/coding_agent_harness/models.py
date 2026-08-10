@@ -56,6 +56,14 @@ class ListDir:
 
 
 @dataclass(frozen=True)
+class SearchFile:
+    """按内容搜索文件,返回匹配行+行号(agent 定位 TODO/方法,免逐段读全文)。"""
+    path: str
+    pattern: str
+    context: int | None = None  # 可选:匹配行上下各取几行
+
+
+@dataclass(frozen=True)
 class Stop:
     reason: str
 
@@ -67,7 +75,7 @@ class Respond:
 
 
 # Action 联合类型:LLM 一轮可能产出的所有动作变体。
-Action = Union[WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Stop, Respond]
+Action = Union[WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, SearchFile, Stop, Respond]
 
 
 # --- LLM 一次产出 ---

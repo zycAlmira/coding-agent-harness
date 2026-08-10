@@ -112,3 +112,26 @@ def test_read_file_full_reports_total(tmp_path):
     r = read_file(ReadFile("small.txt"), tmp_path)
     assert r.ok
     assert "3 行" in r.output
+
+
+def test_search_file_finds_matches(tmp_path):
+    """search_file:按内容搜索文件,返回匹配行+行号(agent 定位 TODO/方法,
+    不再逐段读全文)。"""
+    from coding_agent_harness.models import SearchFile
+    from coding_agent_harness.tools.files import search_file
+    (tmp_path / "kwic.java").write_text(
+        "public class KWIC {\n    // TODO 填空1\n    void process() {\n    }\n    // TODO 填空2\n}")
+    r = search_file(SearchFile("kwic.java", "TODO"), tmp_path)
+    assert r.ok
+    assert "2" in r.output and "TODO 填空1" in r.output   # 行2
+    assert "5" in r.output and "TODO 填空2" in r.output   # 行5
+    assert "行" in r.output and "kwic.java" in r.output
+
+
+def test_search_file_no_match(tmp_path):
+    from coding_agent_harness.models import SearchFile
+    from coding_agent_harness.tools.files import search_file
+    (tmp_path / "a.txt").write_text("hello")
+    r = search_file(SearchFile("a.txt", "nonexistent"), tmp_path)
+    assert r.ok
+    assert "无匹配" in r.output

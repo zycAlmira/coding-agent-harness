@@ -52,6 +52,16 @@ _AGENT_TOOLS = [
         },
         "required": ["path", "intent"],
     }),
+    ToolSchema("search_file", "在文件中搜索内容,返回匹配行+行号", {
+        "type": "object",
+        "properties": {
+            **_INTENT_PROP,
+            "path": {"type": "string", "description": "文件路径"},
+            "pattern": {"type": "string", "description": "要搜索的内容(如 TODO、方法名、类名)"},
+            "context": {"type": "integer", "description": "可选:匹配行上下各取几行上下文"},
+        },
+        "required": ["path", "pattern", "intent"],
+    }),
     ToolSchema("run_shell", "执行 shell 命令", {
         "type": "object",
         "properties": {**_INTENT_PROP, "cmd": {"type": "string", "description": "要执行的命令"}},
@@ -141,7 +151,7 @@ class AgentLoop:
         convs = self.memory.load_conventions()
         sys = Message("system", (
             "你是一个 coding agent,帮助用户处理代码任务。"
-            "可用工具:read_file/write_file/delete_file/list_dir/run_shell/run_tests/stop。"
+            "可用工具:read_file/write_file/delete_file/list_dir/search_file/run_shell/run_tests/stop。"
             "\n\n## 工作方式"
             "\n1. 每次只调用一个工具,附 intent(一句话动机)。"
             "\n2. 先理解需求再动手,只做用户要求的事。"
@@ -152,6 +162,7 @@ class AgentLoop:
             "\n- 「列出文件/有哪些文件」:调 list_dir(建议 recursive=true 一次列出整个目录树)→ 直接回复文件名列表 → stop。**不要读文件内容,不要逐层多次 list_dir,不要跑测试,不要用 shell。**"
             "\n- 「列出文件内容」:list_dir 了解结构 → 回复文件清单 + 每个文件 1-2 行概述。**不要读取所有文件的完整内容**(除非用户指名某个文件)。"
             "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**大文件被截断时用 offset/lines 参数分段读取,不要重复整读;已读过的行区间不要重复读,用 offset 继续读未读部分。"
+            "\n- **定位代码(TODO/方法名/特定内容)用 search_file**:一次找到所有匹配位置与行号,不要反复整读/分段读全文拼凑。"
             "\n- 修复/改代码:读→改→跑测试→总结→stop;先看懂再改。"
             "\n- 只跑指定测试:run_tests 带 path 参数。"
             "\n- 分析/评估项目:读 1-3 个关键文件→给出分析→stop;不改代码,不跑测试(除非用户要求)。"

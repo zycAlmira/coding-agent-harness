@@ -4,7 +4,7 @@ import json
 import logging
 import httpx
 from coding_agent_harness.models import (
-    AssistantTurn, Action, WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Stop, Respond,
+    AssistantTurn, Action, WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, SearchFile, Stop, Respond,
 )
 
 log = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ _ACTION_BUILDERS = {
     "run_tests": lambda a: RunTests(a.get("path")),
     "read_file": lambda a: ReadFile(a["path"], a.get("offset"), a.get("lines")),
     "list_dir": lambda a: ListDir(a["path"], a.get("recursive")),
+    "search_file": lambda a: SearchFile(a["path"], a["pattern"], a.get("context")),
     "stop": lambda a: Stop(a.get("reason", "")),
 }
 

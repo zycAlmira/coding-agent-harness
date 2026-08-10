@@ -2,7 +2,7 @@
 from __future__ import annotations
 from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
-    Action, ReadFile, WriteFile, DeleteFile, ListDir, RunShell, RunTests, Stop, Respond, ToolResult,
+    Action, ReadFile, WriteFile, DeleteFile, ListDir, SearchFile, RunShell, RunTests, Stop, Respond, ToolResult,
 )
 from coding_agent_harness.tools import files, shell, tests_runner
 
@@ -20,6 +20,8 @@ def dispatch(action: Action, config: Config) -> ToolResult:
             return files.delete_file(action, root)
         case ListDir():
             return files.list_dir(action, root)
+        case SearchFile():
+            return files.search_file(action, root)
         case RunShell():
             return shell.run_shell(action)
         case RunTests():
