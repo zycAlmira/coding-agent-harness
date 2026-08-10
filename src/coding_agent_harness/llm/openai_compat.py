@@ -62,10 +62,14 @@ class OpenAICompatibleClient:
                 return AssistantTurn(action=Respond(content[:2000]), intent="回复", raw=str(msg), text=content[:2000])
             # 空内容:退化为 stop(罕见,可能是 API 异常)。
             return AssistantTurn(action=Stop("no_tool_call"), intent="", raw=str(msg))
-        tc = tcs[0]["function"]
-        action, intent = parse_tool_call(tc)
+        # 批处理:一次返回多个 tool_calls(减少往返——LLM 一次输出多个
+        # read_file 等,逐个执行)。首个作为主 action,其余进 actions 列表。
+        parsed = [parse_tool_call(tc["function"]) for tc in tcs]
+        action, intent = parsed[0]
+        rest = parsed[1:]
         # 工具调用前的文字说明(content 与 tool_calls 并存):随动作一并返回,
         # 由主循环展示给用户——否则"只有工具调用没有回复"(真实 LLM 常同时输出)。
         text = content.strip()[:2000] if content.strip() else None
-        log.debug("llm intent=%s action=%s", intent, type(action).__name__)  # key 不进日志
-        return AssistantTurn(action=action, intent=intent, raw=str(tc), text=text)
+        log.debug("llm intent=%s action=%s (batch=%d)", intent, type(action).__name__, len(parsed))  # key 不进日志
+        return AssistantTurn(action=action, intent=intent, raw=str(tcs[0]["function"]), text=text,
+                             actions=rest or None)

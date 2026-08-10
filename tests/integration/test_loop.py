@@ -440,3 +440,72 @@ def test_repeated_read_same_file_prompt(tmp_path):
     assert result.outcome == "stopped"
     flat = "\n".join(cap.received)
     assert "重复读取" in flat and "同一文件" in flat, "连续重复读同一文件应注入提示"
+
+
+def test_repeated_read_prompt_at_2(tmp_path):
+    """重复读取检测提前到连续 2 次(第 2 次重复读即提示,更早打断空转)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "kwic.java").write_text("x" * 500)
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    class _Cap:
+        def __init__(self): self.received = []
+        def complete(self, messages, tools, state):
+            self.received.append("\n".join(m.content for m in messages))
+            return MockLLMClient([
+                {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+                {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+                {"when": "always", "action": Stop("done"), "intent": "完成"},
+            ]).complete(messages, tools, state)
+    cap = _Cap()
+    loop = AgentLoop(llm=cap, config=cfg, memory=mem)
+    loop.run(task="看文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    flat = "\n".join(cap.received)
+    assert "重复读取" in flat and "同一文件" in flat, "第 2 次重复读应注入提示"
+
+
+def test_system_prompt_search_before_read(tmp_path):
+    """提示词应引导:定位内容先 search_file,只读相关行区间,不逐段读全文。"""
+    from coding_agent_harness.core.state import LoopState
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    loop = AgentLoop(llm=MockLLMClient([]), config=cfg, memory=mem)
+    sys_content = loop._build_messages("任务", LoopState())[0].content
+    assert "search_file" in sys_content
+    assert "先 search_file" in sys_content or "定位" in sys_content, "应引导先搜索定位"
+    assert "不要逐段读全文" in sys_content or "不要逐段" in sys_content, "应禁止逐段读全文"
+
+
+def test_batch_actions_executed_in_one_round(tmp_path):
+    """批处理:LLM 一次返回多个动作 → 同一轮逐个执行(减少往返,提高效率)。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "a.txt").write_text("A")
+    (ws / "b.txt").write_text("B")
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile, ListDir
+    class _Batch:
+        """第一次返回 3 个动作(ListDir + 2 ReadFile),第二次 stop。"""
+        def __init__(self): self.n = 0
+        def complete(self, messages, tools, state):
+            self.n += 1
+            if self.n == 1:
+                return AssistantTurn(
+                    action=ListDir("."), intent="看结构", raw="x",
+                    actions=[(ReadFile("a.txt"), "读 a"), (ReadFile("b.txt"), "读 b")],
+                )
+            return AssistantTurn(action=Stop("done"), intent="完成", raw="x")
+    loop = AgentLoop(llm=_Batch(), config=cfg, memory=mem)
+    result = loop.run(task="读文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    assert result.outcome == "stopped"
+    # 同一轮 3 个动作都执行了:steps 含 ListDir + 2 ReadFile
+    acts = [s.turn.action for s in result.steps]
+    assert sum(isinstance(a, ListDir) for a in acts) == 1
+    assert sum(isinstance(a, ReadFile) for a in acts) == 2
+    # 只调用了 2 次 LLM(1 次批处理 3 动作 + 1 次 stop)= 减少往返
+    assert loop._llm_calls == 2, f"批处理应减少 LLM 往返: {loop._llm_calls}"

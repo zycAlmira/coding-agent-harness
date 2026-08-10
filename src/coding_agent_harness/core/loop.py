@@ -6,6 +6,7 @@ from typing import Callable
 from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
     RunTests, Stop, ToolResult, Step, RunResult, Fix, Respond, WriteFile, ReadFile,
+    AssistantTurn, Verdict, Feedback,
 )
 from coding_agent_harness.llm.base import LLMClient, Message, ToolSchema
 from coding_agent_harness.tools.dispatch import dispatch
@@ -163,7 +164,7 @@ class AgentLoop:
             "\n- 「列出文件/有哪些文件」:调 list_dir(建议 recursive=true 一次列出整个目录树)→ 直接回复文件名列表 → stop。**不要读文件内容,不要逐层多次 list_dir,不要跑测试,不要用 shell。**"
             "\n- 「列出文件内容」:list_dir 了解结构 → 回复文件清单 + 每个文件 1-2 行概述。**不要读取所有文件的完整内容**(除非用户指名某个文件)。"
             "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**大文件被截断时用 offset/lines 参数分段读取,不要重复整读;已读过的行区间不要重复读,用 offset 继续读未读部分。"
-            "\n- **定位代码(TODO/方法名/特定内容)用 search_file**:一次找到所有匹配位置与行号,不要反复整读/分段读全文拼凑。"
+            "\n- **定位代码先 search_file**:一次找到所有匹配位置与行号,再只读相关行区间(offset/lines)。**不要逐段读全文拼凑**——那是低效且浪费轮数的方式。"
             "\n- 修复/改代码:读→改→跑测试→总结→stop;先看懂再改。"
             "\n- 只跑指定测试:run_tests 带 path 参数。"
             "\n- 分析/评估项目:读 1-3 个关键文件→给出分析→stop;不改代码,不跑测试(除非用户要求)。"
@@ -209,6 +210,123 @@ class AgentLoop:
         for c in state.context_injected:
             msgs.append(Message("system", c))
         return msgs
+
+    def _execute_action(self, action, intent, state, ts_provider) -> tuple[ToolResult, Verdict, Feedback | None]:
+        """执行单个动作:护栏判定 → 分发 → 校验。供主循环与批处理复用。"""
+        v = self.guard(action, self.config)
+        vname = type(v).__name__
+        if vname == "Deny":
+            tr = ToolResult(ok=False, output="", error=f"被护栏拒绝:{v.reason}。该命令被禁止,不要重复尝试,请改用其他方式。")
+            fb = None
+        elif vname == "NeedsApproval":
+            if self.hitl_enabled:
+                aid, decision, timed_out = self._suspend_for_approval(action, v, intent)
+                if decision:
+                    tr = self.dispatch(action, self.config)
+                    fb = None
+                    if isinstance(action, RunTests) and tr.structured is not None:
+                        fb = self.validator(tr.structured, self.config.feedback.max_traceback_excerpt_lines)
+                        tr = ToolResult(ok=fb.status == "PASS", output=tr.output, structured=tr.structured, error=None)
+                else:
+                    prefix = "审批超时" if timed_out else "被拒"
+                    tr = ToolResult(ok=False, output="", error=f"{prefix}:{v.reason}")
+                    fb = None
+            else:
+                tr = ToolResult(ok=False, output="", error=f"需人工审批:{v.reason}。该动作类型当前不可执行,不要重复尝试,请改用 read_file/list_dir/write_file 或直接文字回复。")
+                fb = None
+        else:
+            tr = self.dispatch(action, self.config)
+            fb = None
+            if isinstance(action, RunTests) and tr.structured is not None:
+                fb = self.validator(tr.structured, self.config.feedback.max_traceback_excerpt_lines)
+                tr = ToolResult(ok=fb.status == "PASS", output=tr.output, structured=tr.structured, error=None)
+        return tr, v, fb
+
+    def _process_action(self, action, intent, state, steps, ts_provider) -> tuple[str | None, LoopState, Feedback | None]:
+        """处理单个动作:重复读检测 → 护栏 → 执行 → 事件 → 历史 → 反馈 → 停机判断。
+
+        返回 (停机原因或 None, 新 state, 本轮 fb)。主循环对批处理(多个动作)
+        逐个调用本方法,直到某动作触发停机。
+        """
+        # 重复读取同一文件检测:连续 2 次 ReadFile 同一路径 → 注入提示
+        # (真实 LLM 曾 54 次重读同一文件,60 轮耗尽;提前到 2 次更早打断)。
+        if isinstance(action, ReadFile):
+            last_path = getattr(self, "_last_read_path", None)
+            if action.path == last_path:
+                self._read_streak = getattr(self, "_read_streak", 0) + 1
+            else:
+                self._read_streak = 1
+            self._last_read_path = action.path
+            if self._read_streak >= 2:
+                state.context_injected.append(
+                    f"你已连续 {self._read_streak} 次读取同一文件 {action.path}。"
+                    "如果已获得所需内容,请继续下一步(写代码/测试/stop);"
+                    "如需定位代码,用 search_file;如需读其他部分,用 offset/lines 指定未读的行区间,不要重复读取相同范围。")
+        else:
+            self._read_streak = 0
+        # 连续被护栏拦截的动作计数:达到阈值后注入提示,防止在被拒操作上空转。
+        v = self.guard(action, self.config)
+        vname = type(v).__name__
+        if vname in ("Deny", "NeedsApproval") and not (vname == "NeedsApproval" and self.hitl_enabled):
+            self._rejected_streak = getattr(self, "_rejected_streak", 0) + 1
+            if self._rejected_streak >= 3:
+                state.context_injected.append(
+                    "你已连续多次尝试被护栏拦截的动作。请停止尝试被拦截的操作,"
+                    "改用可用工具(read_file/list_dir/write_file)或直接文字回复用户。")
+        else:
+            self._rejected_streak = 0
+        # 执行:护栏 → 分发 → 校验
+        tr, _, fb = self._execute_action(action, intent, state, ts_provider)
+        # 合并为单个 action 事件:动作名 + 护栏判定 + 结果 + 反馈
+        action_name = type(action).__name__
+        self.on_event({"type": "action", "action": action_name, "intent": intent,
+                       "verdict": vname, "ok": tr.ok, "feedback": _fb_to_dict(fb),
+                       "error": tr.error})
+        steps.append(Step(turn=AssistantTurn(action=action, intent=intent, raw=""),
+                          verdict=v, tool_result=tr, feedback=fb, ts=ts_provider()))
+        # 历史回灌:精简结果 + 统一提示
+        output_text = tr.output if tr.output else (tr.error or "(无输出)")
+        if action_name == "RunTests":
+            if fb is not None:
+                output_text = f"测试结果: {fb.status} — {fb.summary}"
+            else:
+                output_text = _truncate_middle(output_text, head=200, tail=100, limit=400)
+        else:
+            output_text = _truncate_middle(output_text, head=500, tail=400, limit=900)
+        next_hint = "请根据以上结果决定下一步:任务完成则调用 stop(reason 附简短总结),否则继续。"
+        self._append_history(Message(
+            "user",
+            f"[上一步] {action_name}: {intent}\n[结果]\n{output_text}\n\n{next_hint}"
+        ))
+        # 最近一次工具结果摘要(stop trivial 兜底展示用);Stop 自身输出不算
+        if not isinstance(action, Stop):
+            self._last_tool_summary = output_text if output_text else None
+        # 反馈 → 状态更新 + PASS 提示
+        if fb:
+            state = update_after_feedback(state, fb, self.config)
+            if fb.status == "PASS":
+                state.context_injected.append(
+                    "测试全部通过!调用 stop,在 reason 字段里用自然语言说明你做了什么修改。"
+                    "例如 reason:'修改了 calc.py,将 add 返回值从 a+b 改为 a+b+1,"
+                    "使 add(2,2)=5 通过测试。'"
+                )
+        # 停机判断:Stop 动作 / decide_stop
+        if isinstance(action, Stop):
+            reason = action.reason or ""
+            if reason and reason not in ("no_tool_call", "done"):
+                if not _is_redundant(reason, self._emitted_texts):
+                    self.on_event({"type": "response", "text": reason})
+            elif not self._responded_this_round:
+                self._any_response = True
+                self.on_event({"type": "response", "text": self._last_tool_summary or "(任务完成)"})
+            return "stopped", state, fb
+        stop = decide_stop(state, self.config)
+        if stop:
+            if not self._any_response:
+                note = {"max_rounds": "已达到最大执行轮数", "stuck": "连续失败无进展"}.get(stop, stop)
+                self.on_event({"type": "response", "text": f"({note},停止执行)"})
+            return stop, state, fb
+        return None, state, fb
 
     def _suspend_for_approval(self, action, verdict, intent: str = "") -> tuple[str, bool, bool]:
         """登记一条 pending 审批并挂起循环,阻塞到 approve() 唤醒或超时。
@@ -298,6 +416,7 @@ class AgentLoop:
         # 本任务已输出的全部 response 文本(Stop reason 去重用——真实 LLM 常在
         # 中途输出清单/概述后,Stop 时又把同一份内容完整输出一遍,前端重复显示)。
         self._emitted_texts: list[str] = []
+        self._llm_calls = 0  # LLM 调用计数(批处理减少往返的度量)
         while True:
             state.rounds += 1
             # 达到软上限(max_rounds):注入「尽快收尾」提示,不终止——复杂任务
@@ -311,6 +430,7 @@ class AgentLoop:
             self._responded_this_round = False
             msgs = self._build_messages(task, state)
             try:
+                self._llm_calls += 1
                 turn = self.llm.complete(msgs, _AGENT_TOOLS, state.snapshot())
             except RuntimeError:
                 outcome = "error"
@@ -353,143 +473,22 @@ class AgentLoop:
                 self._emitted_texts.append(turn.text)
                 self.on_event({"type": "response", "text": turn.text[:2000]})
                 self._append_history(Message("assistant", turn.text[:2000]))
-            v = self.guard(turn.action, self.config)
             # 非 Respond 的工具调用:重置连续 Respond 计数。允许 Respond→Tool→Respond 模式。
             self._consecutive_responds = 0
-            # 重复读取同一文件检测:连续 3 次 ReadFile 同一路径 → 注入提示
-            # (真实 LLM 曾 45+ 次重读同一文件拼凑"完整内容",空转到 60 轮耗尽)。
-            if isinstance(turn.action, ReadFile):
-                last_path = getattr(self, "_last_read_path", None)
-                if turn.action.path == last_path:
-                    self._read_streak = getattr(self, "_read_streak", 0) + 1
-                else:
-                    self._read_streak = 1
-                self._last_read_path = turn.action.path
-                if self._read_streak >= 3:
-                    state.context_injected.append(
-                        f"你已连续 {self._read_streak} 次读取同一文件 {turn.action.path}。"
-                        "如果已获得所需内容,请继续下一步(写代码/测试/stop);"
-                        "如需读其他部分,用 offset/lines 指定未读的行区间,不要重复读取相同范围。")
-            else:
-                self._read_streak = 0
-            vname = type(v).__name__
-            # 连续被护栏拦截的动作计数(确定性,可单测):达到阈值后注入提示,
-            # 防止 agent 在被拒操作上反复空转浪费轮数(真实 LLM 曾连续 5 次
-            # 尝试被拒的 shell 命令直至轮数耗尽)。
-            if vname in ("Deny", "NeedsApproval") and not (vname == "NeedsApproval" and self.hitl_enabled):
-                self._rejected_streak = getattr(self, "_rejected_streak", 0) + 1
-                if self._rejected_streak >= 3:
-                    state.context_injected.append(
-                        "你已连续多次尝试被护栏拦截的动作。请停止尝试被拦截的操作,"
-                        "改用可用工具(read_file/list_dir/write_file)或直接文字回复用户。")
-            else:
-                self._rejected_streak = 0
-            if vname == "Deny":
-                tr = ToolResult(ok=False, output="", error=f"被护栏拒绝:{v.reason}。该命令被禁止,不要重复尝试,请改用其他方式。")
-                fb = None
-            elif vname == "NeedsApproval":
-                if self.hitl_enabled:
-                    # HITL 完整化:挂起循环等人类审批,据决定执行或回灌"被拒";超时按拒绝处理
-                    aid, decision, timed_out = self._suspend_for_approval(turn.action, v, turn.intent)
-                    if decision:
-                        tr = self.dispatch(turn.action, self.config)
-                        fb = None
-                        if isinstance(turn.action, RunTests) and tr.structured is not None:
-                            fb = self.validator(tr.structured, self.config.feedback.max_traceback_excerpt_lines)
-                            tr = ToolResult(ok=fb.status == "PASS", output=tr.output, structured=tr.structured, error=None)
-                    else:
-                        prefix = "审批超时" if timed_out else "被拒"
-                        tr = ToolResult(ok=False, output="", error=f"{prefix}:{v.reason}")
-                        fb = None
-                else:
-                    # 非 HITL:回灌"需审批"字符串,不挂起(保持 Task 15 行为)。
-                    # 明确告知该动作类型当前不可执行、不要重复尝试——真实 LLM 曾
-                    # 在被拒后换命令反复尝试,白白消耗轮数。
-                    tr = ToolResult(ok=False, output="", error=f"需人工审批:{v.reason}。该动作类型当前不可执行,不要重复尝试,请改用 read_file/list_dir/write_file 或直接文字回复。")
-                    fb = None
-            else:
-                tr = self.dispatch(turn.action, self.config)
-                fb = None
-                if isinstance(turn.action, RunTests) and tr.structured is not None:
-                    fb = self.validator(tr.structured, self.config.feedback.max_traceback_excerpt_lines)
-                    tr = ToolResult(ok=fb.status == "PASS", output=tr.output, structured=tr.structured, error=None)
-            # 合并为单个 action 事件:动作名 + 护栏判定 + 结果 + 反馈,
-            # 供前端渲染一个步骤胶囊(此前 guardrail_verdict/tool_result 两个事件
-            # 会让前端显示两个无动作名的内部胶囊)。
-            action_name = type(turn.action).__name__
-            self.on_event({"type": "action", "action": action_name, "intent": turn.intent,
-                           "verdict": vname, "ok": tr.ok, "feedback": _fb_to_dict(fb),
-                           "error": tr.error})
-            steps.append(Step(turn=turn, verdict=v, tool_result=tr, feedback=fb, ts=ts_provider()))
-            # 记录本轮对话历史(下轮 _build_messages 时追加到消息列表),
-            # 让真实 LLM 能基于之前的执行结果做下一步决策。
-            # 用 "user" 角色(而非 assistant+tool)回灌,避免与 OpenAI
-            # function-calling 协议的 assistant/tool 角色语义冲突——
-            # 我们的 Message 抽象只有 role+content,无法表达
-            # tool_calls/tool_call_id 结构;用 user 消息告知"上一步做了什么、
-            # 结果是什么",让模型清楚知道需要继续输出下一个 function call。
-            output_text = tr.output if tr.output else (tr.error or "(无输出)")
-            # 回灌压缩(Claude Code 式:给模型的工具输出尽量精简):
-            # - RunTests:反馈详情已由 feedback 消息单独回灌,此处只回灌一行结果,
-            #   避免全文重复膨胀上下文。
-            # - 其余动作:保留头尾(读大文件时 agent 需要同时看到开头与结尾,
-            #   避免基于不完整信息决策),额度收紧。
-            if action_name == "RunTests":
-                if fb is not None:
-                    output_text = f"测试结果: {fb.status} — {fb.summary}"
-                else:
-                    output_text = _truncate_middle(output_text, head=200, tail=100, limit=400)
-            else:
-                output_text = _truncate_middle(output_text, head=500, tail=400, limit=900)
-            # 统一简短提示:不再按动作类型分化(避免逐轮累积的过度引导,
-            # 让系统提示词的意图分流规则主导决策)。
-            next_hint = "请根据以上结果决定下一步:任务完成则调用 stop(reason 附简短总结),否则继续。"
-            self._append_history(Message(
-                "user",
-                f"[上一步] {action_name}: {turn.intent}\n"
-                f"[结果]\n{output_text}\n\n{next_hint}"
-            ))
-            # 记录最近一次工具结果摘要:stop trivial 时兜底展示给用户
-            # (如「列出文件」后 agent 直接 stop,用户能直接看到文件列表)。
-            # Stop 自身的回灌输出("stop: done")不算工具结果,不更新。
-            if not isinstance(turn.action, Stop):
-                self._last_tool_summary = output_text if output_text else None
-            if fb:
-                state = update_after_feedback(state, fb, self.config)
-                # 测试通过后不自动停机,注入提示引导 agent 总结工作再 stop。
-                if fb.status == "PASS":
-                    state.context_injected.append(
-                        "测试全部通过!调用 stop,在 reason 字段里用自然语言说明你做了什么修改。"
-                        "例如 reason:'修改了 calc.py,将 add 返回值从 a+b 改为 a+b+1,"
-                        "使 add(2,2)=5 通过测试。'"
-                    )
-            final_fb = fb or final_fb
-            if isinstance(turn.action, Stop):
-                # Stop.reason 承载了 agent 的工作总结,发送给前端显示。
-                # reason 为 trivial(空/done/no_tool_call)且本轮无任何文字输出时,
-                # 发兜底 response——防止"做了事但用户看不到回答"(真实 LLM 常直接
-                # stop 带个简短 reason,被 trivial 过滤后前端只剩胶囊)。
-                # 兜底优先展示最近一次工具结果摘要(用户直接看到答案,如文件列表)。
-                reason = turn.action.reason or ""
-                if reason and reason not in ("no_tool_call", "done"):
-                    # 去重:reason 与已输出的文字重复(清单/概述输出两遍)→ 不再发,
-                    # 已输出的内容就是最终答复。
-                    if not _is_redundant(reason, self._emitted_texts):
-                        self.on_event({"type": "response", "text": reason})
-                elif not self._responded_this_round:
-                    self._any_response = True
-                    self.on_event({"type": "response", "text": self._last_tool_summary or "(任务完成)"})
-                outcome = "stopped"
+            # 批处理:LLM 一次返回多个 tool_calls → 逐个执行(减少往返提高效率,
+            # 一次 LLM 调用完成多个读文件等,而非 N 次串行往返)。
+            actions = [(turn.action, turn.intent)] + (list(getattr(turn, "actions", None) or []))
+            stop_reason = None
+            for act, intent in actions:
+                sr, state, fb = self._process_action(act, intent, state, steps, ts_provider)
+                final_fb = fb or final_fb
+                if sr:
+                    stop_reason = sr
+                    break
+            if stop_reason:
+                outcome = "stopped" if stop_reason == "stopped" else stop_reason
                 break
-            stop = decide_stop(state, self.config)
-            if stop:
-                outcome = stop
-                # 停机兜底:达到轮数上限/连续失败停机且全程无任何文字时,
-                # 发中性回复(不捏造总结),用户至少知道发生了什么。
-                if not self._any_response:
-                    note = {"max_rounds": "已达到最大执行轮数", "stuck": "连续失败无进展"}.get(stop, stop)
-                    self.on_event({"type": "response", "text": f"({note},停止执行)"})
-                break
+            continue
         # 任务结束记录记忆(循环外写,不破坏确定性)。
         # 成功:记录修改内容与测试结果;失败:记录症状,尝试提取已做的修改。
         self._record_memory(state, steps, final_fb, outcome, ts_provider)

@@ -86,11 +86,14 @@ class AssistantTurn:
 
     text: 动作伴随的文字说明(OpenAI 协议允许 content 与 tool_calls 同时返回,
     即"我先看看目录结构"这类工具调用前的说明)。Respond 动作时即回复文本。
+    actions: 多个动作(OpenAI 协议允许一次返回多个 tool_calls,批处理减少
+    往返——LLM 一次输出多个 read_file 等,逐个执行)。缺省用单个 action。
     """
     action: Action
     intent: str
     raw: str
     text: str | None = None
+    actions: list[tuple[Action, str]] | None = None  # 批处理:(动作, intent) 对
 
 
 # --- 护栏判定 ---
