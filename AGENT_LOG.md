@@ -310,3 +310,15 @@
 - 端到端 Java 场景闭环:白名单放行 mvn test + 校验器解析 → testShift AssertionFailure @ KWICTest.java:45。
 - 验证:139 passed(新增 test_command/Maven 解析/白名单多语言/危险仍拦截),lint 全过。
 - 教训 32:**多语言支持要在"确定性反馈"边界内做**——run_tests 多语言化后,反馈仍由校验器解析(test_command 只是换执行器,不是换判定),§A.4"移除 LLM 后机制可单测"不破;若放开让 agent 自己判断测试结果,主贡献就丢了。
+
+## 2026-08-10 效率优化:批处理多动作 + 重复读提前 + search 引导
+
+- 触发:用户反馈「agent 调用工具次数太多,停在第 60 轮,要优化调用逻辑提高效率,速度太慢」。
+- 历史分析:54/60 步是 ReadFile(连续重复 50 次)——效率瓶颈是"每轮一次 LLM 往返 + 串行逐段读"。
+- 优化(三管齐下):
+  1. **多动作批处理**(核心):OpenAI 协议支持一次返回多个 tool_calls,openai_compat 解析全部 → AssistantTurn.actions 存 (动作,intent) 对 → loop 主循环逐个执行(抽 _process_action 承载单动作完整处理链),一轮执行多个动作减少往返;新增 _llm_calls 计数度量
+  2. **重复读检测阈值 3→2**:第 2 次重复读同一文件即提示
+  3. **search_file 引导强化**:定位先 search,只读相关行区间,不逐段读全文
+- 端到端:5 个读文件 2 次 LLM 往返(原来 6 次),~3x 提升。
+- 验证:142 passed(新增批处理/提前提示/search 引导测试),lint 全过。
+- 教训 33:**效率瓶颈是"往返次数"不是"轮数"**——多动作批处理(一次 LLM 调用执行多个工具)是 coding agent 提速的最直接手段,与 Claude Code 的并行工具调用一致;结构改动(抽 _process_action)让主循环支持批处理而不破坏单个动作的完整处理链。
