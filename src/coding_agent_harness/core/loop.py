@@ -248,22 +248,33 @@ class AgentLoop:
         返回 (停机原因或 None, 新 state, 本轮 fb)。主循环对批处理(多个动作)
         逐个调用本方法,直到某动作触发停机。
         """
-        # 重复读取同一文件检测:连续 2 次 ReadFile 同一路径 → 注入提示
-        # (真实 LLM 曾 54 次重读同一文件,60 轮耗尽;提前到 2 次更早打断)。
+        # 已读文件缓存:首次读(含 offset 分段)记录已读行;重复读同一文件
+        # (或已读过的行区间)→ 直接回灌缓存 + 提示,不再空转重读。
+        # (真实 LLM 曾 94 次重读同一文件,105 步耗尽;缓存让重复读零成本且
+        # 明确告知"已读过",打断"完整掌握"式的确认偏好。)
         if isinstance(action, ReadFile):
-            last_path = getattr(self, "_last_read_path", None)
-            if action.path == last_path:
-                self._read_streak = getattr(self, "_read_streak", 0) + 1
+            cache = self._read_cache.setdefault(action.path, (set(), ""))
+            start = (action.offset or 1) - 1 if action.offset is not None else 0
+            if action.lines is not None:
+                read_rows = set(range(start, start + action.lines))
             else:
-                self._read_streak = 1
-            self._last_read_path = action.path
-            if self._read_streak >= 2:
+                read_rows = None  # 整读:视为覆盖全文
+            cached_rows, cached_text = cache
+            # 命中:整读且已整读过,或请求行区间 ⊆ 已读行
+            hit = (read_rows is None and cached_text) or (
+                read_rows is not None and cached_rows and read_rows <= cached_rows)
+            if hit:
                 state.context_injected.append(
-                    f"你已连续 {self._read_streak} 次读取同一文件 {action.path}。"
-                    "如果已获得所需内容,请继续下一步(写代码/测试/stop);"
-                    "如需定位代码,用 search_file;如需读其他部分,用 offset/lines 指定未读的行区间,不要重复读取相同范围。")
-        else:
-            self._read_streak = 0
+                    f"文件 {action.path} 已在前面读取过(缓存)。其内容在对话历史中,"
+                    "不要重复读取;请基于已读内容继续下一步(写代码/测试/stop),"
+                    "如需定位代码用 search_file,如需读未读部分用 offset 指定新行区间。")
+                return None, state, None
+            # 未命中:记录本次读取(整读标记全文已读;分段累加已读行)
+            if read_rows is None:
+                self._read_cache[action.path] = (set(), "<全文已读>")
+            else:
+                cache[0].update(read_rows)
+                self._read_cache[action.path] = cache
         # 连续被护栏拦截的动作计数:达到阈值后注入提示,防止在被拒操作上空转。
         v = self.guard(action, self.config)
         vname = type(v).__name__
@@ -277,11 +288,14 @@ class AgentLoop:
             self._rejected_streak = 0
         # 执行:护栏 → 分发 → 校验
         tr, _, fb = self._execute_action(action, intent, state, ts_provider)
-        # 合并为单个 action 事件:动作名 + 护栏判定 + 结果 + 反馈
+        # 合并为单个 action 事件:动作名 + 护栏判定 + 结果 + 反馈 + 目标路径
+        # (path 让前端/历史可见 agent 操作对象,否则 94 次 ReadFile 全显示
+        # "ReadFile" 无法诊断在重复读哪个文件)
         action_name = type(action).__name__
+        target = getattr(action, "path", None) or getattr(action, "cmd", None)
         self.on_event({"type": "action", "action": action_name, "intent": intent,
                        "verdict": vname, "ok": tr.ok, "feedback": _fb_to_dict(fb),
-                       "error": tr.error})
+                       "error": tr.error, "path": target})
         steps.append(Step(turn=AssistantTurn(action=action, intent=intent, raw=""),
                           verdict=v, tool_result=tr, feedback=fb, ts=ts_provider()))
         # 历史回灌:精简结果 + 统一提示
@@ -417,6 +431,9 @@ class AgentLoop:
         # 中途输出清单/概述后,Stop 时又把同一份内容完整输出一遍,前端重复显示)。
         self._emitted_texts: list[str] = []
         self._llm_calls = 0  # LLM 调用计数(批处理减少往返的度量)
+        # 已读文件缓存 {path: (已读行集合, 全文或摘要)}:重复读同一文件直接回灌
+        # 缓存,不再空转重读(真实 LLM 曾 94 次重读同一文件)。
+        self._read_cache: dict[str, tuple[set[int], str]] = {}
         while True:
             state.rounds += 1
             # 达到软上限(max_rounds):注入「尽快收尾」提示,不终止——复杂任务

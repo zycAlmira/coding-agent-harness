@@ -439,7 +439,7 @@ def test_repeated_read_same_file_prompt(tmp_path):
     result = loop.run(task="看文件", ts_provider=lambda: "2026-07-22T00:00:00")
     assert result.outcome == "stopped"
     flat = "\n".join(cap.received)
-    assert "重复读取" in flat and "同一文件" in flat, "连续重复读同一文件应注入提示"
+    assert "缓存" in flat, "连续重复读同一文件应注入缓存提示"
 
 
 def test_repeated_read_prompt_at_2(tmp_path):
@@ -463,7 +463,7 @@ def test_repeated_read_prompt_at_2(tmp_path):
     loop = AgentLoop(llm=cap, config=cfg, memory=mem)
     loop.run(task="看文件", ts_provider=lambda: "2026-07-22T00:00:00")
     flat = "\n".join(cap.received)
-    assert "重复读取" in flat and "同一文件" in flat, "第 2 次重复读应注入提示"
+    assert "缓存" in flat, "第 2 次重复读应注入缓存提示"
 
 
 def test_system_prompt_search_before_read(tmp_path):
@@ -509,3 +509,28 @@ def test_batch_actions_executed_in_one_round(tmp_path):
     assert sum(isinstance(a, ReadFile) for a in acts) == 2
     # 只调用了 2 次 LLM(1 次批处理 3 动作 + 1 次 stop)= 减少往返
     assert loop._llm_calls == 2, f"批处理应减少 LLM 往返: {loop._llm_calls}"
+
+
+def test_repeat_read_returns_cached_content(tmp_path):
+    """重复读同一文件 → 第 2 次起直接回灌缓存内容(不重新读),并注入提示。"""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "kwic.java").write_text("line1\nline2\nline3")
+    cfg = _cfg(ws)
+    mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
+    from coding_agent_harness.models import ReadFile
+    class _Cap:
+        def __init__(self): self.received = []
+        def complete(self, messages, tools, state):
+            self.received.append("\n".join(m.content for m in messages))
+            return MockLLMClient([
+                {"when": "round 1", "action": ReadFile("kwic.java"), "intent": "读"},
+                {"when": "round 2", "action": ReadFile("kwic.java"), "intent": "再读"},
+                {"when": "round 3", "action": ReadFile("kwic.java"), "intent": "完整读"},
+                {"when": "always", "action": Stop("done"), "intent": "完成"},
+            ]).complete(messages, tools, state)
+    cap = _Cap()
+    loop = AgentLoop(llm=cap, config=cfg, memory=mem)
+    loop.run(task="读文件", ts_provider=lambda: "2026-07-22T00:00:00")
+    flat = "\n".join(cap.received)
+    assert "缓存" in flat, "重复读应提示已缓存"

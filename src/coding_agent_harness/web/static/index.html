@@ -189,6 +189,11 @@
     .tool-row:hover { background:var(--hover); }
     .tool-row .tr-icon { display:flex; color:var(--accent); flex-shrink:0; }
     .tool-row .tr-name { font-weight:600; color:var(--text); flex-shrink:0; }
+    .tool-row .tr-path {
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px;
+      color:var(--text2); background:#f3f4f6; border-radius:4px; padding:1px 5px;
+      flex-shrink:0; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
     .tool-row .tr-intent {
       color:var(--text2); flex:1; min-width:0;
       overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -546,7 +551,7 @@
 
       // 即时渲染:工具行实时出现(不攒批到任务结束),用户能实时看到 agent 的动作
       appendToolSteps([{
-        actionName, intent: e.intent || '',
+        actionName, intent: e.intent || '', path: e.path || '',
         verdict, stepClass,
         ok: e.ok, err: e.error || '', fb,
         id: 'step-' + nid(),
@@ -587,6 +592,7 @@
         html += `<div class="tool-row ${s.stepClass}" id="${s.id}" onclick="toggleStepDetail('${s.id}')" title="点击展开详情">
           <span class="tr-icon">${actionSvg(s.actionName)}</span>
           <span class="tr-name">${esc(s.actionName)}</span>
+          ${s.path ? `<span class="tr-path">${esc(s.path)}</span>` : ''}
           <span class="tr-intent" title="${esc(s.intent)}">${esc(s.intent)}</span>
           ${s.stepClass === 'pass' ? `<span class="tr-badge pass">${PASS_SVG}</span>` : ''}
           ${s.stepClass === 'deny' ? `<span class="tr-badge deny">${DENY_SVG}</span>` : ''}
@@ -767,6 +773,7 @@
                   html += `<div class="tool-row ${cls}" id="${hid}" onclick="toggleStepDetail('${hid}')" title="点击展开详情">
                     <span class="tr-icon">${actionSvg(actionName)}</span>
                     <span class="tr-name">${esc(actionName)}</span>
+                    ${s.path ? `<span class="tr-path">${esc(s.path)}</span>` : ''}
                     <span class="tr-intent" title="${esc(s.intent||'')}">${esc(s.intent||'')}</span>
                     ${cls === 'pass' ? `<span class="tr-badge pass">${PASS_SVG}</span>` : ''}
                     ${cls === 'deny' ? `<span class="tr-badge deny">${DENY_SVG}</span>` : ''}
