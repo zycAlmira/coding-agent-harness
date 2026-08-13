@@ -70,10 +70,9 @@ def main(argv: list[str] | None = None) -> int:
         def _on_event(e: dict) -> None:
             # CLI 输出 agent 过程:文字回复 / 工具动作,让用户看到做了什么。
             if e.get("type") == "response" and e.get("text"):
-                print(f"🤖 {e['text']}", flush=True)
+                print(f"{'🤖' if _EMOJI_OK else '[AI]'} {e['text']}", flush=True)
             elif e.get("type") == "action":
-                icon = {"ReadFile": "📖", "WriteFile": "✏️", "RunTests": "🧪",
-                        "ListDir": "📂", "SearchFile": "🔍", "RunShell": "⚡"}.get(e.get("action", ""), "🔧")
+                icon = _ACTION_ICON.get(e.get("action", ""), "🔧" if _EMOJI_OK else "[?]")
                 path = e.get("path") or ""
                 print(f"  {icon} {e.get('action')} {path} | {e.get('intent', '')}", flush=True)
 
@@ -86,16 +85,28 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # ── Claude Code 式交互 REPL ──────────────────────────────
-# 颜色(终端 ANSI;非 TTY 自动降级)
+# 颜色(终端 ANSI):Windows 旧终端(CMD/老 PowerShell)不支持 ANSI 转义,
+# 强制禁用避免乱码;非 TTY 也禁用。Windows 10+ 新终端可手动开启。
+_USE_ANSI = not (sys.platform == "win32" or not sys.stdout.isatty())
+
+
 def _c(code: str, s: str) -> str:
-    return f"\033[{code}m{s}\033[0m" if sys.stdout.isatty() else s
+    return f"\033[{code}m{s}\033[0m" if _USE_ANSI else s
 
 
 _CYAN, _GREEN, _YELLOW, _RED, _DIM = "36", "32", "33", "31", "2"
 
-_ACTION_ICON = {"ReadFile": "📖", "WriteFile": "✏️", "DeleteFile": "🗑️",
-                "ListDir": "📂", "SearchFile": "🔍", "RunTests": "🧪",
-                "RunShell": "⚡", "Stop": "🛑", "Respond": "💬"}
+# 图标:Windows CMD 无 emoji 字体,用 ASCII 替代;新终端/macOS/Linux 用 emoji。
+_EMOJI_OK = not (sys.platform == "win32" or not sys.stdout.isatty())
+_ACTION_ICON = {
+    "ReadFile": "📖", "WriteFile": "✏️", "DeleteFile": "🗑️",
+    "ListDir": "📂", "SearchFile": "🔍", "RunTests": "🧪",
+    "RunShell": "⚡", "Stop": "🛑", "Respond": "💬",
+} if _EMOJI_OK else {
+    "ReadFile": "[读]", "WriteFile": "[写]", "DeleteFile": "[删]",
+    "ListDir": "[列]", "SearchFile": "[搜]", "RunTests": "[测]",
+    "RunShell": "[命令]", "Stop": "[停]", "Respond": "[回复]",
+}
 
 
 def _chat(argv: list[str]) -> int:
@@ -132,7 +143,7 @@ def _chat(argv: list[str]) -> int:
     def _emit(e: dict) -> None:
         # 还原 WebUI 对话呈现:文字回复气泡 + 工具动作行
         if e.get("type") == "response" and e.get("text"):
-            print(f"{_c(_CYAN, '🤖')} {e['text']}", flush=True)
+            print(f"{_c(_CYAN, '🤖' if _EMOJI_OK else '[AI]')} {e['text']}", flush=True)
         elif e.get("type") == "action":
             icon = _ACTION_ICON.get(e.get("action", ""), "🔧")
             path = e.get("path") or ""
