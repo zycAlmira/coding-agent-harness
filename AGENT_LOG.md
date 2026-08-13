@@ -382,3 +382,18 @@
 - 端到端:写完代码→测试失败→ListDir 找 pom→再测试失败,不再 stuck 误杀。
 - 验证:153 passed,lint 全过。
 - 教训 42:**"无变化"停机要区分"测试失败"与"agent 无推进"**——no_change 只看失败集合,误把"修复中的测试失败"当死循环;探索/修复动作是推进信号,应重置计数。停机机制必须理解 agent 的进展语义,否则会误杀接近完成的任务。
+
+## 2026-08-13 提交前核查与收尾
+
+- 触发:用户完成 REFLECTION 与 AGENT_LOG 整理后,要求核查离正式提交还差什么。
+- 技能:常规核查(交付物清单逐项对照 §五 + A 文件);删除过时测试。
+- 核查结果:
+  - ✅ 交付物文件齐全(SPEC/PLAN/SPEC_PROCESS/README/AGENT_LOG/REFLECTION/CI/Dockerfile)
+  - ✅ 凭据安全(无真实 key、无敏感文件被 git 追踪)
+  - ✅ 153 passed、机制演示 3 个、CI 含 unit-test job、SPEC 含领域与机制设计、README 必含六章节
+  - ✅ PLAN.md 24 task 完成标记
+  - ✗ REFLECTION 1391 字 < 1500 下限(本人补写)
+  - ✗ 线上部署 URL 仍为占位符(本人部署后填入)
+  - ✗ 最近修复(8/10 缓存/no_change)未 push,最后一次 CI pass 待确认
+- 人工干预:删除 tests/unit/test_state.py 过时测试(test_no_change_resets_on_fix_action——docstring 声称"修复动作重置"但 state 纯函数无此概念,与新 loop 层语义冲突;新语义已由 test_explore_action_resets_no_change 覆盖)。
+- 教训 43:**收尾核查要对照清单逐项,别靠记忆**——REFLECTION 字数、CI 最后状态、部署 URL 这类"硬指标"必须实测;交付物文件存在 ≠ 达标(REFLECTION 存在但字数不足)。
