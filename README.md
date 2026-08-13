@@ -151,14 +151,27 @@ CI 双平台配置:`.gitlab-ci.yml`(GitLab CI,含 `unit-test` + `build-image` jo
 
 ## 部署架构
 
-项目已部署到阿里云轻量服务器(容器 + Docker),**线上 WebUI:http://116.62.58.112** (mock 模式,无需 key 即可访问,可直接体验 agent 对话)。
+项目已部署到阿里云轻量服务器(容器 + Docker),**线上 WebUI:http://116.62.58.112**。
 
-使用方式:
+**默认 real 模式**:服务器已配置 DeepSeek 大模型 API(`deepseek-v4-pro`,凭据经文件后端安全存储),打开即可用真实大模型对话,无需任何配置。
 
-- **工作目录**:点 📁 → 无 GUI 服务器弹输入框,手动输入服务器上的绝对路径(如 `/app/demo-projects/105-01-kwic-mainprogram`,服务器已预置 7 个 KWIC 演示项目)
-- **直接对话**:输入「列出文件」「阅读并完成代码」等,agent 实时显示工具动作 + markdown 回复
-- **real 模式**:点 🔑 录入凭据 → 顶栏切 real → 用真实 LLM 执行(凭据经文件后端存挂载卷,重启不丢)
-- **演示项目**:服务器预置 7 个 KWIC 风格作业(主程序/OO/管道过滤器/分层/MVC 等),含 TODO 填空,适合演示「反馈闭环」完整流程
+### 演示项目(服务器预置,7 个 KWIC 风格作业)
+
+| 路径(工作目录输入) | 项目 | 风格 |
+|---|---|---|
+| `/app/demo-projects/105-01-kwic-mainprogram` | Lab 01 | 主程序-子程序(共享数据),含 TODO 填空 |
+| `/app/demo-projects/106-02-kwic-oo` | Lab 02 | 面向对象(ADT) |
+| `/app/demo-projects/107-03-kwic-pipefilter` | Lab 03 | 管道-过滤器 |
+| `/app/demo-projects/108-04-kwic-layered` | Lab 04 | 三层分层(Layered) |
+| `/app/demo-projects/109-05-kwic-mvc` | Lab 05 | MVC |
+| `/app/demo-projects/110-06-kwic-implicit` | Lab 06 | 隐式调用(Implicit Invocation) |
+| `/app/demo-projects/114-kwic-pipefilter-new` | Lab 03(新版) | 管道-过滤器(线程版) |
+
+### 使用方式
+
+- **开始对话**:打开网址 → 直接输入任务(如「列出文件」「阅读并完成代码」),默认 real 模式 + 默认工作区(105-01)即可工作
+- **切换工作目录**:点 📁 → 弹输入框,输入上表任一绝对路径 → 自动开始新会话,agent 在该项目上工作
+- **推荐演示**:选 `105-01-kwic-mainprogram` → 输入「阅读并完成代码」→ agent 读文件、search 定位 6 处填空、写代码、`mvn test` 验证、反馈修复 → 测试全绿 → 总结(完整「反馈闭环」演示)
 - **容器工具链**:镜像含 Python 3.12 + Java 17 + Maven 3.9,agent 可修改并测试多语言项目
 
 ## 目录结构
