@@ -149,9 +149,9 @@ docker run -p 8000:8000 coding-agent-harness
 
 CI 双平台配置:`.gitlab-ci.yml`(GitLab CI,含 `unit-test` + `build-image` job)与 `.github/workflows/ci.yml`(GitHub Actions,含 `unit-test` + `build-image` job)。`build-image` 在 `main` 分支且 `Dockerfile` 存在时自动跑(§4.10)。
 
-## 线上 WebUI
+## 部署架构
 
-**项目网址**:http://116.62.58.112 (mock 模式 WebUI,无需 key 即可访问,可直接体验 agent 对话)
+项目已部署到阿里云轻量服务器(容器 + Docker),**线上 WebUI:http://116.62.58.112** (mock 模式,无需 key 即可访问,可直接体验 agent 对话)。
 
 使用方式:
 
@@ -159,6 +159,7 @@ CI 双平台配置:`.gitlab-ci.yml`(GitLab CI,含 `unit-test` + `build-image` jo
 - **直接对话**:输入「列出文件」「阅读并完成代码」等,agent 实时显示工具动作 + markdown 回复
 - **real 模式**:点 🔑 录入凭据 → 顶栏切 real → 用真实 LLM 执行(凭据经文件后端存挂载卷,重启不丢)
 - **演示项目**:服务器预置 7 个 KWIC 风格作业(主程序/OO/管道过滤器/分层/MVC 等),含 TODO 填空,适合演示「反馈闭环」完整流程
+- **容器工具链**:镜像含 Python 3.12 + Java 17 + Maven 3.9,agent 可修改并测试多语言项目
 
 ## 目录结构
 
