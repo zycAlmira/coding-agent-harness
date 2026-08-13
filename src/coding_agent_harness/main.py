@@ -108,17 +108,20 @@ def _chat(argv: list[str]) -> int:
     """
     from dataclasses import replace
     import os
-    from coding_agent_harness.config import load_config
+    from coding_agent_harness.config import load_config, Config, LLMConfig
     from coding_agent_harness.core.loop import AgentLoop
     from coding_agent_harness.memory.store import Memory
     from coding_agent_harness.llm.openai_compat import OpenAICompatibleClient
 
     try:
         cfg = load_config("config.yaml")
-    except (FileNotFoundError, OSError) as e:
-        print(f"无法读取 config.yaml: {e}", file=sys.stderr)
-        print("提示:先 `harness creds set` 录入凭据,并准备 config.yaml。", file=sys.stderr)
-        return 2
+    except (FileNotFoundError, OSError):
+        # 无 config.yaml:自动用默认配置(开箱即用,用户下载项目即可 chat)。
+        # 默认 base_url/model,工作目录由下方 cwd 覆盖。
+        cfg = Config(
+            project_root=Path("."),
+            llm=LLMConfig(base_url="https://api.deepseek.com/v1", model="deepseek-chat"),
+        )
     # 像 Claude Code:在哪个文件夹打开终端,就以它为工作目录(cwd 覆盖
     # config.yaml 的 project_root)——除非 HARNESS_PROJECT_ROOT 显式指定。
     workdir = os.environ.get("HARNESS_PROJECT_ROOT", os.getcwd())

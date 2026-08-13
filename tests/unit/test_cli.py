@@ -72,14 +72,7 @@ def test_run_missing_config(monkeypatch, capsys, tmp_path):
     assert "config.yaml" in err
 
 
-def test_chat_missing_config_friendly(capsys, tmp_path, monkeypatch):
-    """chat 缺 config.yaml 时应友好报错(不触网),提示先 creds set。"""
-    from coding_agent_harness.main import main
-    monkeypatch.chdir(tmp_path)  # 无 config.yaml,且自动恢复 cwd
-    rc = main(["chat"])
-    assert rc == 2
-    err = capsys.readouterr().err
-    assert "config.yaml" in err and "creds set" in err
+
 
 
 def test_chat_uses_cwd_as_workdir(monkeypatch, capsys, tmp_path):
@@ -106,3 +99,26 @@ def test_chat_uses_cwd_as_workdir(monkeypatch, capsys, tmp_path):
         pass
     assert captured.get("project_root") == str(tmp_path), \
         f"chat 应用 cwd 作为工作目录: {captured.get('project_root')} != {tmp_path}"
+
+
+def test_chat_no_config_uses_defaults(monkeypatch, capsys, tmp_path):
+    """chat 无 config.yaml 时自动用默认配置(不报错,开箱即用):
+    默认 base_url/model + 当前目录作工作目录。"""
+    import builtins
+    from coding_agent_harness.main import main
+    monkeypatch.chdir(tmp_path)  # 无 config.yaml
+    captured = {}
+    real_init = __import__("coding_agent_harness.core.loop", fromlist=["AgentLoop"]).AgentLoop.__init__
+    def fake_init(self, llm, config, memory, **kw):
+        captured["project_root"] = str(config.project_root)
+        captured["base_url"] = config.llm.base_url
+        captured["model"] = config.llm.model
+        return real_init(self, llm=llm, config=config, memory=memory, **kw)
+    monkeypatch.setattr("coding_agent_harness.core.loop.AgentLoop.__init__", fake_init)
+    monkeypatch.setattr(builtins, "input", lambda *a: "exit")
+    try:
+        main(["chat"])
+    except Exception:
+        pass
+    assert captured.get("project_root") == str(tmp_path), "无 config 时用当前目录"
+    assert captured.get("model"), "无 config 时用默认 model"
