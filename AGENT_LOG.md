@@ -397,3 +397,13 @@
   - ✗ 最近修复(8/10 缓存/no_change)未 push,最后一次 CI pass 待确认
 - 人工干预:删除 tests/unit/test_state.py 过时测试(test_no_change_resets_on_fix_action——docstring 声称"修复动作重置"但 state 纯函数无此概念,与新 loop 层语义冲突;新语义已由 test_explore_action_resets_no_change 覆盖)。
 - 教训 43:**收尾核查要对照清单逐项,别靠记忆**——REFLECTION 字数、CI 最后状态、部署 URL 这类"硬指标"必须实测;交付物文件存在 ≠ 达标(REFLECTION 存在但字数不足)。
+
+## 2026-08-13 REFLECTION 补字至达标(1783 字)
+
+- 用户要求:REFLECTION 原 1391 字不足 1500 下限,小幅扩写(补例子、扩句子),不做大改动。
+- 扩写三处(保持结构与观点):
+  1. TDD 放大器节:补"探索/修复动作重置 no_change"的红→绿实例(先写失败测试→改实现→变绿)
+  2. 凭据与分发节:补 ③(录入 getpass + in-memory keyring 测试)、②部署脚本封装
+  3. 方法论批判节:新增 ③"子代理可交接上下文"假设的批判(扁平文本报告丢细节→倾向混合模式)
+- 结果:1391 → 1783 字,达标(1500-2500)。
+- 人工干预:无;仅 AI 扩写,观点与结构为用户原稿。
