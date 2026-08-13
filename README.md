@@ -32,21 +32,85 @@ uv sync
 
 ## 运行
 
+### CLI:harness 命令(交互式对话 / 单次任务 / WebUI / 凭据)
+
+控制台脚本 `harness` 已注册,支持三种使用方式:
+
+**① 交互式对话 `harness chat`(推荐,类 Claude Code)**
+
 ```bash
-# WebUI(mock LLM 演示,默认 http://0.0.0.0:8000,无需 key):
-uv run harness serve
+# 在任意项目目录打开终端,chat 自动以当前目录为工作目录(无需配置):
+cd /path/to/my-project
+harness chat
 
-# WebUI(真实 LLM,需先录入凭据):
-uv run harness serve --real
+# 首次使用需录入一次凭据(真实 LLM):
+harness creds set
 
-# 命令行跑一次任务(真实 LLM,需 config.yaml + 凭据):
-cp config.example.yaml config.yaml
-uv run harness run "修复 calc.py 的加法测试"
+# 进入对话模式后:
+❯ 列出文件                      # 输入任务
+  📂 ListDir . | 查看目录        # 工具动作实时显示
+🤖 已列出项目目录树:...          # agent 回复(markdown 渲染)
+❯ 继续,看看 KWIC.java          # 多轮对话,上下文保持
+❯ exit                          # 退出(或 Ctrl+C)
+```
 
-# 测试与 lint:
+- 无 `config.yaml` 时自动用默认配置(默认 DeepSeek + 当前目录),**开箱即用**
+- 也可 `HARNESS_PROJECT_ROOT=/path` 显式指定工作目录
+- 支持 Windows 终端(自动禁用 ANSI 乱码、emoji 换 ASCII)
+
+**② 单次任务 `harness run`**
+
+```bash
+# 跑一次任务,输出 agent 完整过程:
+harness run "修复 calc.py 的加法测试"
+```
+
+**③ WebUI `harness serve`**
+
+```bash
+harness serve                          # mock LLM(无需 key,演示)
+harness serve --real                   # 真实 LLM(需 creds set)
+harness serve --real --project-root ./my-project
+```
+
+浏览器访问 `http://localhost:8000`。
+
+**④ 全局安装(任意目录可用)**
+
+```bash
+uv tool install .
+# 之后任何目录 `cd` 进去即可 `harness chat`(无需 uv run)
+```
+
+### 测试与 lint
+
+```bash
 make test     # 等价 uv run pytest -q
 make lint     # uv run ruff check src tests
 ```
+
+## WebUI 使用说明
+
+启动后(`harness serve` 或线上部署)浏览器访问,界面为三栏布局:
+
+**顶栏**
+- `＋ 新会话`:开始新对话
+- 模型下拉:切换 LLM 供应商/模型(切换自动更新 base_url)
+- `📁 工作目录`:选择 agent 工作区(本地 macOS/Windows 用系统选择器;无 GUI 服务器弹输入框手动填绝对路径)
+- 模式徽章 `mock ⇄ real`:点击切换 mock/真实 LLM(real 需先录入凭据)
+- `🔑` 凭据管理:录入 API Key/Base URL/Model(隐藏输入)
+
+**聊天区**
+- 输入任务 → agent 实时显示工具动作(📖读/✏️写/🧪测/📂列/🔍搜,可点击展开详情)
+- agent 回复为 markdown 渲染(标题/列表/代码块)
+- 多轮对话:同一会话可继续追问,上下文保持
+- 任务完成后工具调用自动折叠成「N 步工具调用」按钮,点击展开
+
+**侧栏**:`📋 历史`(所有对话,点击加载)/ `📂 文件`(工作区文件树,点击查看内容)
+
+**右面板**:会话状态/对话轮/模型/模式 + 「更多统计」折叠(轮次/护栏拦截/审批/工具调用)
+
+**典型演示流程**(详见「机制演示」):选工作区 → 输入「阅读并完成代码」→ agent 读文件、search 定位填空、写代码、`mvn test` 验证、反馈修复 → 测试全绿 → 总结。
 
 ## 凭据与安全配置
 
@@ -64,6 +128,12 @@ uv run harness creds clear
 - `.env`(若用)经环境加载而非 `export`;仓库内 `.gitignore` 已忽略 `.env`/`.env.*`。
 - 真实 LLM 客户端(`llm/openai_compat.py`)的 key 只进 `Authorization` header,**不进请求体、不进日志**。
 - 仓库自查:无任何真实凭据。
+
+**容器内凭据(文件后端回落)**:Linux 容器无 macOS Keychain/Secret Service 时,`Creds` 自动回落**权限 600 的 JSON 文件**(路径 `HARNESS_CREDS_FILE`,默认 `/app/data/creds.json`),WebUI 凭据端点正常录入,real 模式可用。部署时挂载卷持久化:
+
+```bash
+docker run -v /host/creds-data:/app/data -e HARNESS_CREDS_FILE=/app/data/creds.json ...
+```
 
 ## 分发
 
@@ -118,6 +188,27 @@ docker push registry.cn-hangzhou.aliyuncs.com/<命名空间>/coding-agent-harnes
 - CI/CD:`unit-test` job 每次 push/PR 跑测试(§4.8);`build-image` job 在 main 构建推送镜像。
 - **线上部署 URL**:`http://116.62.58.112`(阿里云轻量服务器,mock 模式 WebUI,无需 key 即可访问)。
 
+### 服务器端使用说明
+
+部署后 WebUI 运行在容器内,支持:
+
+**工作目录选择**:点 📁 → 原生选择器在无 GUI 服务器不可用 → 弹输入框**手动输入服务器上的绝对路径**(如 `/app/demo-projects/105-01-kwic-mainprogram`)。默认工作区由 `HARNESS_PROJECT_ROOT` 指定:
+
+```bash
+docker run -e HARNESS_PROJECT_ROOT=/app/demo-projects/105-01-kwic-mainprogram ...
+```
+
+**演示项目挂载**:把本地项目打包上传到服务器,挂载进容器供 agent 读写:
+
+```bash
+# 服务器上:tar 打包上传(排除编译产物)
+# 挂载:docker run -v /root/demo-projects:/app/demo-projects ...
+```
+
+**容器内工具链**:镜像含 Python 3.12 + Java 17 + Maven 3.9(agent 可修改并测试 Java 项目,`mvn -B test` 输出干净供校验器解析)。Maven 依赖已 warmup 缓存进镜像,运行时秒级。
+
+**real 模式**:WebUI 点 🔑 录入凭据(经文件后端存到挂载卷)→ 顶栏切 real → agent 用真实 LLM 执行。
+
 ## 目录结构
 
 ```
@@ -170,9 +261,9 @@ uv run pytest tests/demo/ -v
 ## 已知限制
 
 - **本地 docker daemon**:Mac 需启动 Docker Desktop GUI 才能本地 `docker build`;未启动时镜像构建由 CI `build-image` job(GitLab runner docker:dind)完成。
-- **§五.9 线上 URL**:需用户在阿里云购买轻量服务器后执行 `scripts/deploy-aliyun.sh` 产生公网 URL,AI 无法代持云账号。
-- **容器内 keychain**:Linux 容器内 macOS Keychain 不可用,`keyring` 无可用后端时不会自动文件回落;真实 LLM 跑建议本地运行,或在容器内显式配 `keyring` 文件后端(`keyrings.alt`)/环境注入。
-- **Windows shlex**:`tools/shell.py` 的 `shell=False` 在 Windows 上对复杂命令解析较弱(Task 7 登记 follow-up;mock 单测不暴露,CI 未跑 Windows 矩阵)。
+- **容器凭据为文件后端(非 keychain)**:Linux 容器无 Keychain/Secret Service,凭据存权限 600 的 JSON 文件(`HARNESS_CREDS_FILE` 指定)。安全性弱于系统 keychain,但满足「不硬编码、不回显」;生产多用户场景建议加认证层。
+- **WebUI 无用户认证**:单用户设计(项目 §3.5 单人),公网部署时任何知道 URL 的人可访问对话历史并发起任务;不适合多用户公开。
+- **Windows shlex**:`tools/shell.py` 的 `shell=False` 在 Windows 上对复杂命令解析较弱(Task 7 登记 follow-up;mock 单测不暴露,CI 未跑 Windows 矩阵)。CLI 交互界面本身已兼容 Windows 终端。
 - **冷启动样本**:SPEC_PROCESS 冷启动验证仅覆盖 Task 1/2(单人项目,信号量偏低,见 SPEC_PROCESS §5.5)。
 
 ---
