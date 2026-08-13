@@ -8,7 +8,7 @@ AI4SE 期末项目 · Project A · Coding Agent Harness。一个**由学生编�
 
 ## 分支与交付
 
-- **默认分支 `feature/coding-agent-harness` 即交付分支**:全部实现代码(24 个 Plan task + 后续 WebUI/CI/部署打磨)都在该分支,clone 下来即可直接使用。`main` 分支仅含项目文档与 SPEC/PLAN 初始提交,不承载实现。
+- **默认分支 `main` 即交付分支**:全部实现代码(24 个 Plan task + 后续 WebUI/CI/部署打磨)已在 main,clone 下来即可直接使用。
 - 开发流程遵循 Superpowers 七步(§4):每功能/大模块开分支(或 worktree)一个 PR,提交/PR 描述标注由哪个 subagent 完成、人工改了哪些;`PLAN.md` 每完成一个 task 即标记完成并附 commit hash(详见根目录 `AGENT_LOG.md` 的全程记录)。
 
 ## 安装
