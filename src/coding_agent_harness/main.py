@@ -7,6 +7,7 @@
 from __future__ import annotations
 import os
 import sys
+from pathlib import Path
 from coding_agent_harness.creds.keychain import Creds
 
 
@@ -105,6 +106,8 @@ def _chat(argv: list[str]) -> int:
     事件流(response/action)打印到终端,还原 WebUI 的对话呈现。
     需 config.yaml + creds set(真实 LLM);exit/quit 退出。
     """
+    from dataclasses import replace
+    import os
     from coding_agent_harness.config import load_config
     from coding_agent_harness.core.loop import AgentLoop
     from coding_agent_harness.memory.store import Memory
@@ -116,6 +119,10 @@ def _chat(argv: list[str]) -> int:
         print(f"无法读取 config.yaml: {e}", file=sys.stderr)
         print("提示:先 `harness creds set` 录入凭据,并准备 config.yaml。", file=sys.stderr)
         return 2
+    # 像 Claude Code:在哪个文件夹打开终端,就以它为工作目录(cwd 覆盖
+    # config.yaml 的 project_root)——除非 HARNESS_PROJECT_ROOT 显式指定。
+    workdir = os.environ.get("HARNESS_PROJECT_ROOT", os.getcwd())
+    cfg = replace(cfg, project_root=Path(workdir).resolve())
 
     mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
 

@@ -80,3 +80,29 @@ def test_chat_missing_config_friendly(capsys, tmp_path, monkeypatch):
     assert rc == 2
     err = capsys.readouterr().err
     assert "config.yaml" in err and "creds set" in err
+
+
+def test_chat_uses_cwd_as_workdir(monkeypatch, capsys, tmp_path):
+    """chat 默认用当前终端目录(cwd)作为工作目录,像 Claude Code 一样——
+    在哪个文件夹打开终端就以它为项目根(覆盖 config.yaml 的 project_root)。"""
+    import builtins
+    from coding_agent_harness.main import main
+    (tmp_path / "config.yaml").write_text(
+        "project_root: /nonexistent\nllm: {base_url: x, model: m}\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    # 捕获传给 AgentLoop 的 config,验证 project_root 被 cwd 覆盖
+    captured = {}
+    real_init = __import__("coding_agent_harness.core.loop", fromlist=["AgentLoop"]).AgentLoop.__init__
+    def fake_init(self, llm, config, memory, **kw):
+        captured["project_root"] = str(config.project_root)
+        return real_init(self, llm=llm, config=config, memory=memory, **kw)
+    monkeypatch.setattr("coding_agent_harness.core.loop.AgentLoop.__init__", fake_init)
+    # 模拟输入:exit
+    monkeypatch.setattr(builtins, "input", lambda *a: "exit")
+    # 缺 creds 会抛,但验证 project_root 先被设置
+    try:
+        main(["chat"])
+    except Exception:
+        pass
+    assert captured.get("project_root") == str(tmp_path), \
+        f"chat 应用 cwd 作为工作目录: {captured.get('project_root')} != {tmp_path}"
