@@ -19,3 +19,18 @@ def test_set_get_clear(monkeypatch):
     assert k == "sk-x" and u == "http://x" and m == "m"
     c.clear()
     assert c.status() == {"set": False}
+
+
+def test_creds_no_keyring_backend_fallback(monkeypatch):
+    """容器无 keyring 后端(NoKeyringError)→ 所有方法容错为未配置,不抛异常。"""
+    import keyring
+    from coding_agent_harness.creds.keychain import Creds
+    def boom():
+        raise keyring.errors.NoKeyringError("no backend")
+    monkeypatch.setattr("coding_agent_harness.creds.keychain.keyring.get_keyring", boom)
+    c = Creds()
+    assert c.status() == {"set": False}
+    assert c.info() == {"configured": False, "base_url": "", "model": ""}
+    assert c.get() is None
+    c.set("k", "u", "m")  # 不抛
+    c.clear()  # 不抛
