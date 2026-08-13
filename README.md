@@ -1,16 +1,10 @@
 # Coding Agent Harness
 
-AI4SE 期末项目 · Project A · Coding Agent Harness。一个**由学生自己编码实现**的 Coding Agent 内核,以**反馈闭环(feedback loop)**作为主贡献维度。
+AI4SE 期末项目 · Project A · Coding Agent Harness。一个**由学生编码 AI 辅助实现**的 Coding Agent 。
 
 ## 简介
 
-本仓库承载一个自研的 Coding Agent Harness 内核:agent 主循环(组织上下文 → 调 LLM → 解析动作 → 分发执行 → 回灌结果 → 停机判断)、可注入 mock 的 LLM 抽象层、工具分发、治理护栏、反馈校验器、记忆读写,全部自实现,**不寄生于任何现成 agent 框架的高层循环**(§A.4 红线)。
-
-六维度最低实现齐全(决策/工具/记忆/治理/反馈/配置),其中**反馈闭环**做深:
-
-- `feedback/validator.py` 是**纯函数**,解析 pytest 输出得到结构化 `Feedback`(失败分类 `FailureCategory` + 文件/行/traceback 摘要),回灌给 agent 使其在下一步改变行为。
-- 反馈信号 = 确定性校验器,不是"提醒 LLM 注意"的提示词。
-- 每个核心机制(工具分发、治理拦截、反馈回灌、记忆读写、停机)在 **mock/stub LLM 下均可用确定性单元测试验证**(§A.4 判定标准:移除真实 LLM 后机制能否用单测验证)。
+本仓库承载一个自研的 Coding Agent Harness 内核:agent 主循环(组织上下文 → 调 LLM → 解析动作 → 分发执行 → 回灌结果 → 停机判断)、可注入 mock 的 LLM 抽象层、工具分发、治理护栏、反馈校验器、记忆读写,全部自实现,主要聚焦反馈闭环。
 
 ## 分支与交付
 
@@ -19,32 +13,41 @@ AI4SE 期末项目 · Project A · Coding Agent Harness。一个**由学生自�
 
 ## 安装
 
-需 Python >= 3.11。用 [uv](https://docs.astral.sh/uv/) 管理依赖。
+需 Python >= 3.11 与 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-# 开发(含 pytest/ruff):
+# 克隆项目(默认分支即交付分支):
+git clone https://github.com/zycAlmira/coding-agent-harness.git
+cd coding-agent-harness
+
+# 安装依赖:
 uv sync --extra dev
-# 仅运行(主依赖):
-uv sync
+
+# 全局安装 harness 命令(推荐,之后任何目录都能用):
+uv tool install .
 ```
 
-控制台脚本 `harness` 已在 `pyproject.toml` 的 `[project.scripts]` 注册。
+> 不全局安装也可用:`uv run harness chat`(项目目录内)。全局安装后任意目录 `cd` 进去即可 `harness chat`。
 
 ## 运行
 
-### CLI:harness 命令(交互式对话 / 单次任务 / WebUI / 凭据)
+### CLI:harness 命令(交互式对话 / 单次任务 / 凭据)
 
-控制台脚本 `harness` 已注册,支持三种使用方式:
-
-**① 交互式对话 `harness chat`(推荐,类 Claude Code)**
+**① 全局安装(任意目录可用,推荐)**
 
 ```bash
-# 在任意项目目录打开终端,chat 自动以当前目录为工作目录(无需配置):
-cd /path/to/my-project
-harness chat
+# 在项目目录(已 uv sync 后)执行一次,之后任何目录都能用 harness:
+uv tool install .
+```
 
+**② 交互式对话 `harness chat`**
+
+```bash
 # 首次使用需录入一次凭据(真实 LLM):
 harness creds set
+
+# 在任意项目目录打开终端,chat 自动以当前目录为工作目录(无需配置):
+harness chat
 
 # 进入对话模式后:
 ❯ 列出文件                      # 输入任务
@@ -56,31 +59,7 @@ harness creds set
 
 - 无 `config.yaml` 时自动用默认配置(默认 DeepSeek + 当前目录),**开箱即用**
 - 也可 `HARNESS_PROJECT_ROOT=/path` 显式指定工作目录
-- 支持 Windows 终端(自动禁用 ANSI 乱码、emoji 换 ASCII)
-
-**② 单次任务 `harness run`**
-
-```bash
-# 跑一次任务,输出 agent 完整过程:
-harness run "修复 calc.py 的加法测试"
-```
-
-**③ WebUI `harness serve`**
-
-```bash
-harness serve                          # mock LLM(无需 key,演示)
-harness serve --real                   # 真实 LLM(需 creds set)
-harness serve --real --project-root ./my-project
-```
-
-浏览器访问 `http://localhost:8000`。
-
-**④ 全局安装(任意目录可用)**
-
-```bash
-uv tool install .
-# 之后任何目录 `cd` 进去即可 `harness chat`(无需 uv run)
-```
+- 支持 macOS/Windows
 
 ### 测试与 lint
 
@@ -91,6 +70,13 @@ make lint     # uv run ruff check src tests
 
 ## WebUI 使用说明
 
+```bash
+harness serve                          # mock LLM(无需 key,演示)
+harness serve --real                   # 真实 LLM(需 creds set)
+harness serve --real --project-root ./my-project
+```
+
+浏览器访问 `http://localhost:8000`。
 启动后(`harness serve` 或线上部署)浏览器访问,界面为三栏布局:
 
 **顶栏**
@@ -118,11 +104,11 @@ LLM/付费 API key **绝不硬编码、绝不进 git(含 history)、不进日志
 
 ```bash
 # 录入(api_key 用 getpass 隐藏录入,不经 readline,不进 shell history):
-uv run harness creds set
+harness creds set
 # 查看(只返回"已设置/未设置",绝不回显 key):
-uv run harness creds status
+harness creds status
 # 清除:
-uv run harness creds clear
+harness creds clear
 ```
 
 - `.env`(若用)经环境加载而非 `export`;仓库内 `.gitignore` 已忽略 `.env`/`.env.*`。
@@ -153,13 +139,13 @@ CI 双平台配置:`.gitlab-ci.yml`(GitLab CI,含 `unit-test` + `build-image` jo
 
 项目已部署到阿里云轻量服务器(容器 + Docker),**线上 WebUI:http://116.62.58.112**。
 
-**默认 real 模式**:服务器已配置 DeepSeek 大模型 API(`deepseek-v4-pro`,凭据经文件后端安全存储),打开即可用真实大模型对话,无需任何配置。
+**默认 real 模式**:服务器已配置 DeepSeek 大模型 API,打开即可用真实大模型对话,无需任何配置，暂不支持上传文件。
 
-### 演示项目(服务器预置,7 个 KWIC 风格作业)
+### 演示项目(服务器预置软件工程与计算 II 课程作业,7 个 体系风格实战项目)
 
 | 路径(工作目录输入) | 项目 | 风格 |
 |---|---|---|
-| `/app/demo-projects/105-01-kwic-mainprogram` | Lab 01 | 主程序-子程序(共享数据),含 TODO 填空 |
+| `/app/demo-projects/105-01-kwic-mainprogram` | Lab 01 | 主程序-子程序(共享数据)|
 | `/app/demo-projects/106-02-kwic-oo` | Lab 02 | 面向对象(ADT) |
 | `/app/demo-projects/107-03-kwic-pipefilter` | Lab 03 | 管道-过滤器 |
 | `/app/demo-projects/108-04-kwic-layered` | Lab 04 | 三层分层(Layered) |
@@ -171,7 +157,7 @@ CI 双平台配置:`.gitlab-ci.yml`(GitLab CI,含 `unit-test` + `build-image` jo
 
 - **开始对话**:打开网址 → 直接输入任务(如「列出文件」「阅读并完成代码」),默认 real 模式 + 默认工作区(105-01)即可工作
 - **切换工作目录**:点 📁 → 弹输入框,输入上表任一绝对路径 → 自动开始新会话,agent 在该项目上工作
-- **推荐演示**:选 `105-01-kwic-mainprogram` → 输入「阅读并完成代码」→ agent 读文件、search 定位 6 处填空、写代码、`mvn test` 验证、反馈修复 → 测试全绿 → 总结(完整「反馈闭环」演示)
+- **演示流程**:选 `105-01-kwic-mainprogram` → 输入「阅读并完成代码」→ agent 读文件，写代码、`mvn test` 验证、反馈修复 → 测试全绿 → 总结(完整「反馈闭环」演示)
 - **容器工具链**:镜像含 Python 3.12 + Java 17 + Maven 3.9,agent 可修改并测试多语言项目
 
 ## 目录结构
