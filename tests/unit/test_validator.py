@@ -111,3 +111,11 @@ def test_maven_surefire_output_parsed():
     assert ft.line == 45
     assert "expected" in (ft.assertion_diff or "") or "[2, 1]" in (ft.assertion_diff or "")
     assert "1 failed" in fb.summary or "Failures: 1" in fb.summary
+
+
+def test_parse_empty_stdout_no_crash():
+    """stdout 为空(测试执行无输出/异常)不应抛 IndexError——容错为 FAIL + 无失败项。"""
+    fb = Validator.parse(PytestRun(exit_code=1, stdout="", stderr="", duration_s=0.1))
+    assert fb.status == "FAIL"
+    assert fb.failed_tests == []
+    assert fb.summary  # 有摘要(说明无法解析)

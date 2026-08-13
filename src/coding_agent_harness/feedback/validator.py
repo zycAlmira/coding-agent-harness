@@ -62,6 +62,11 @@ class Validator:
     @staticmethod
     def parse(run: PytestRun, max_excerpt_lines: int = 8) -> Feedback:
         stdout = run.stdout.replace("\r\n", "\n").replace("\r", "\n")
+        # stdout 为空(测试执行无输出/异常):容错为 FAIL + 无失败项,
+        # 不抛 IndexError(真实 bug:空字符串 splitlines()[−1] 越界)。
+        if not stdout.strip():
+            return Feedback(status="FAIL", failed_tests=[], passed_count=0,
+                            summary="测试无输出(可能执行异常),无法解析")
         # Maven surefire 输出(Java 项目,run_tests 用 mvn test 产生)走独立解析
         if "Tests run:" in stdout and ("surefire" in stdout or "Results:" in stdout):
             return _parse_maven(run, max_excerpt_lines)
