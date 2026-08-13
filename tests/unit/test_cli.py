@@ -148,3 +148,22 @@ def test_render_md_inline():
     out = _render_md("运行 **pytest** 看 `test_calc.py` 结果 *注意*")
     assert "**" not in out and "`" not in out and "*" not in out.replace("注意", "")
     assert "pytest" in out and "test_calc.py" in out
+
+
+def test_chat_hitl_enabled(monkeypatch, capsys, tmp_path):
+    """chat 应启用 HITL(hitl_enabled=True),危险动作可在终端审批。"""
+    import builtins
+    from coding_agent_harness.main import main
+    monkeypatch.chdir(tmp_path)  # 无 config,用默认
+    captured = {}
+    real_init = __import__("coding_agent_harness.core.loop", fromlist=["AgentLoop"]).AgentLoop.__init__
+    def fake_init(self, llm, config, memory, **kw):
+        captured["hitl"] = kw.get("hitl_enabled", False)
+        return real_init(self, llm=llm, config=config, memory=memory, **kw)
+    monkeypatch.setattr("coding_agent_harness.core.loop.AgentLoop.__init__", fake_init)
+    monkeypatch.setattr(builtins, "input", lambda *a: "exit")
+    try:
+        main(["chat"])
+    except Exception:
+        pass
+    assert captured.get("hitl") is True, f"chat 应启用 HITL: {captured}"

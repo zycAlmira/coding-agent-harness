@@ -199,9 +199,37 @@ def _chat(argv: list[str]) -> int:
                 line = f"  {icon} {_c(_RED, e.get('action', ''))} 🚫 {_c(_DIM, e.get('error', ''))}"
             print(line, flush=True)
 
-    loop = AgentLoop(llm=OpenAICompatibleClient(Creds()), config=cfg, memory=mem, on_event=_emit)
+    loop = AgentLoop(llm=OpenAICompatibleClient(Creds()), config=cfg, memory=mem,
+                     on_event=_emit, hitl_enabled=True)
+
+    def _approval_worker():
+        # 审批线程:loop 挂起等审批时,终端 [y/n] 询问并 approve(类 Claude Code)。
+        while True:
+            try:
+                aid = loop.wait_for_pending_approval(timeout=0.5)
+            except Exception:
+                break
+            if aid is None:
+                continue
+            snap = loop.current_pending() or {}
+            reason = snap.get("reason", "")
+            intent = snap.get("intent", "")
+            print(f"\n{_c(_YELLOW, '⚠️ 需要审批:')} {reason} | intent: {intent}")
+            try:
+                ans = input(_c(_GREEN, "  允许? [y/N] ")).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                ans = "n"
+            try:
+                loop.approve(aid, ans in ("y", "yes"))
+            except KeyError:
+                pass  # 已超时/失效
+
+    import threading
+    t = threading.Thread(target=_approval_worker, daemon=True)
+    t.start()
+
     print(_c(_YELLOW, "Coding Agent Harness — 对话模式"))
-    print(_c(_DIM, "输入任务开始;exit/quit 退出;Ctrl+C 中断。"))
+    print(_c(_DIM, "输入任务开始;exit/quit 退出;Ctrl+C 中断。危险动作会询问 [y/N]。"))
     while True:
         try:
             task = input(_c(_GREEN, "❯ "))
