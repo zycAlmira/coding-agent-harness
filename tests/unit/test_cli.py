@@ -70,3 +70,13 @@ def test_run_missing_config(monkeypatch, capsys, tmp_path):
     assert rc == 2
     err = capsys.readouterr().err
     assert "config.yaml" in err
+
+
+def test_chat_missing_config_friendly(capsys, tmp_path, monkeypatch):
+    """chat 缺 config.yaml 时应友好报错(不触网),提示先 creds set。"""
+    from coding_agent_harness.main import main
+    monkeypatch.chdir(tmp_path)  # 无 config.yaml,且自动恢复 cwd
+    rc = main(["chat"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "config.yaml" in err and "creds set" in err
