@@ -1,0 +1,4 @@
+[
+  {"category": "AssertionFailure", "symptom": "assert 3 == 4", "fix": "修复 off-by-one", "timestamp": "2026-07-22T00:00:00"},
+  {"category": "ImportError", "symptom": "No module named x", "fix": "补 __init__.py", "timestamp": "2026-07-22T00:00:00"}
+]

@@ -1,0 +1,9 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+___________________________________ test_add ___________________________________
+tests/sample_pkg/test_calc.py:5: in test_add
+    assert add(2, 2) == 5
+E   assert 6 == 5
+=========================== short test summary info ===========================
+FAILED tests/sample_pkg/test_calc.py::test_add - assert 6 == 5
+1 failed in 0.01s

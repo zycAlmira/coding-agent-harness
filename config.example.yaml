@@ -1,0 +1,26 @@
+project_root: ./workspace
+
+llm:
+  provider: openai-compatible
+  base_url: https://api.deepseek.com/v1
+  model: deepseek-chat
+
+guardrails:
+  max_rounds: 20          # 软上限:达到后提示尽快收尾,不终止
+  hard_max_rounds: 60     # 硬上限:强制终止的安全阀(防死循环)
+  same_category_prompt_at: 2
+  same_category_stop_at: 3
+  no_change_stop_at: 2
+  approval_timeout_sec: 300
+  shell_blacklist: [rm -rf, git push, sudo, curl, wget, chmod 777,
+                   "del /s", "rmdir /s", "Remove-Item -Recurse", format, diskpart]
+  shell_whitelist: [pytest, ruff, mypy, mvn, gradle, javac, java, npm, npx, node, yarn, go, git]
+
+feedback:
+  pytest_args: [--tb=short, -p, no:cacheprovider, --no-header, -q]
+  max_traceback_excerpt_lines: 8
+
+memory:
+  fixes_path: ./memory/fixes.json
+  conventions_path: ./memory/conventions.json
+  retrieve_top_k: 3

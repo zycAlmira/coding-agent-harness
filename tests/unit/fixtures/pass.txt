@@ -1,0 +1,5 @@
+collected 2 items
+
+tests/test_calc.py ..                                                    [100%]
+
+2 passed in 0.05s

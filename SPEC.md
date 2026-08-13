@@ -1,0 +1,1 @@
+docs/superpowers/specs/2026-07-21-coding-agent-harness-design.md

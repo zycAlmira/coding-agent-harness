@@ -1,0 +1,15 @@
+============================= test session starts =============================
+collected 2 items
+
+tests/test_z.py .F                                                    [100%]
+
+=================================== FAILURES ===================================
+_________________________________ test_z ___________________________________
+    def test_z():
+>       assert compute() == 42
+E       assert 7 == 42
+
+tests/test_z.py:9: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_z.py::test_z
+1 failed, 1 passed in 0.05s

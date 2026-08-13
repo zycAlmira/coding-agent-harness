@@ -1,0 +1,25 @@
+# Fly.io 部署配置(通用 §4.11 学生免费额度)
+# 前提:已 `flyctl auth login`;首次需 `flyctl apps create coding-agent-harness-ai4se`
+# 注意:app 名全局唯一,若被占用请改名并同步 deploy.sh 与本文件的 app 字段。
+app = "coding-agent-harness-ai4se"
+primary_region = "nrt"  # 东京区域,近国内
+
+[build]
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  [http_service.checks]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

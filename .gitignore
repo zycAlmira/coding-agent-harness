@@ -3,5 +3,13 @@ __pycache__/
 *.pyc
 .venv/
 .env
+memory/fixes.json
 .pytest_cache/
+.uv-cache/
+.pip-cache/
 dist/
+config.yaml
+workspace/
+conversations/
+*.pptx
+*.pdf
