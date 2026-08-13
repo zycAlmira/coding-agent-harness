@@ -122,3 +122,29 @@ def test_chat_no_config_uses_defaults(monkeypatch, capsys, tmp_path):
         pass
     assert captured.get("project_root") == str(tmp_path), "无 config 时用当前目录"
     assert captured.get("model"), "无 config 时用默认 model"
+
+
+def test_render_md_plain_text():
+    """纯文本原样返回(无 markdown 符号)。"""
+    from coding_agent_harness.main import _render_md
+    assert _render_md("你好") == "你好"
+
+
+def test_render_md_heading_list_code():
+    """标题/列表/代码块转终端友好格式:去符号、加缩进/前缀。"""
+    from coding_agent_harness.main import _render_md
+    md = "## 文件清单\n- calc.py\n- README.md\n\n```python\ndef add(a,b):\n    return a+b\n```"
+    out = _render_md(md)
+    assert "##" not in out, "标题符号应去除"
+    assert "文件清单" in out
+    assert "• calc.py" in out or "- calc.py" in out, "列表应有前缀"
+    assert "```" not in out, "代码块围栏应去除"
+    assert "def add(a,b)" in out
+
+
+def test_render_md_inline():
+    """行内代码/加粗/斜体符号去除,保留内容。"""
+    from coding_agent_harness.main import _render_md
+    out = _render_md("运行 **pytest** 看 `test_calc.py` 结果 *注意*")
+    assert "**" not in out and "`" not in out and "*" not in out.replace("注意", "")
+    assert "pytest" in out and "test_calc.py" in out

@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 import os
+import re
 import sys
 from pathlib import Path
 from coding_agent_harness.creds.keychain import Creds
@@ -70,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         def _on_event(e: dict) -> None:
             # CLI 输出 agent 过程:文字回复 / 工具动作,让用户看到做了什么。
             if e.get("type") == "response" and e.get("text"):
-                print(f"{'🤖' if _EMOJI_OK else '[AI]'} {e['text']}", flush=True)
+                print(f"{'🤖' if _EMOJI_OK else '[AI]'} {_render_md(e['text'])}", flush=True)
             elif e.get("type") == "action":
                 icon = _ACTION_ICON.get(e.get("action", ""), "🔧" if _EMOJI_OK else "[?]")
                 path = e.get("path") or ""
@@ -95,6 +96,51 @@ def _c(code: str, s: str) -> str:
 
 
 _CYAN, _GREEN, _YELLOW, _RED, _DIM = "36", "32", "33", "31", "2"
+
+
+def _render_md(text: str) -> str:
+    """把 agent 的 markdown 回复渲染成终端友好文本(确定性纯函数)。
+
+    标题去 # 加粗、列表加 • 前缀、代码块去围栏保留缩进、行内代码/加粗/
+    斜体去符号——让终端阅读不全是 markdown 符号。ANSI 由调用方叠加。
+    """
+    lines = (text or "").split("\n")
+    out: list[str] = []
+    in_code = False
+    for raw in lines:
+        line = raw.rstrip()
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            out.append(line)
+            continue
+        s = line.strip()
+        if not s:
+            out.append("")
+            continue
+        # 标题:## 内容 → 内容(加粗)
+        m = re.match(r"^(#{1,6})\s+(.+)$", s)
+        if m:
+            out.append(f"**{m.group(2)}**")
+            continue
+        # 列表:- 项 / 1. 项 → • 项
+        m = re.match(r"^[-*]\s+(.+)$", s)
+        if m:
+            out.append(f"• {m.group(1)}")
+            continue
+        m = re.match(r"^\d+\.\s+(.+)$", s)
+        if m:
+            out.append(f"{m.group(1)}".replace(m.group(1), f"  {m.group(1)}"))
+            continue
+        out.append(s)
+    # 行内清理:去反引号、**加粗**、*斜体*、链接 [t](u) → t
+    rendered = "\n".join(out)
+    rendered = re.sub(r"`([^`]+)`", r"\1", rendered)
+    rendered = re.sub(r"\*\*(.+?)\*\*", r"\1", rendered)
+    rendered = re.sub(r"\*(.+?)\*", r"\1", rendered)
+    rendered = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", rendered)
+    return rendered
 
 # 图标:Windows CMD 无 emoji 字体,用 ASCII 替代;新终端/macOS/Linux 用 emoji。
 _EMOJI_OK = not (sys.platform == "win32" or not sys.stdout.isatty())
@@ -143,7 +189,7 @@ def _chat(argv: list[str]) -> int:
     def _emit(e: dict) -> None:
         # 还原 WebUI 对话呈现:文字回复气泡 + 工具动作行
         if e.get("type") == "response" and e.get("text"):
-            print(f"{_c(_CYAN, '🤖' if _EMOJI_OK else '[AI]')} {e['text']}", flush=True)
+            print(f"{_c(_CYAN, '🤖' if _EMOJI_OK else '[AI]')} {_render_md(e['text'])}", flush=True)
         elif e.get("type") == "action":
             icon = _ACTION_ICON.get(e.get("action", ""), "🔧")
             path = e.get("path") or ""
