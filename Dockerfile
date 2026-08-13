@@ -11,10 +11,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# 多语言工具链:Java 17(预编译 tarball,COPY 进镜像,避免 apt 包名/源问题)+
-# Maven(下载二进制)。agent 可修改并测试 Java 项目。
-# JDK 由构建脚本放在 build context 的 jdk17/ 下(服务器下载解压,185M)。
-COPY jdk17 /opt/jdk17
+# 多语言工具链:Java 17 + Maven(清华源下载预编译二进制,避免 apt 包名/源
+# 问题)。agent 可修改并测试 Java 项目。
+RUN python -c "import urllib.request; urllib.request.urlretrieve('https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jdk/x64/linux/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz', '/tmp/jdk.tar.gz')" \
+    && tar xzf /tmp/jdk.tar.gz -C /opt/ && rm /tmp/jdk.tar.gz \
+    && mv /opt/jdk-17.0.20+8 /opt/jdk17
 ENV JAVA_HOME=/opt/jdk17 \
     PATH=/opt/jdk17/bin:$PATH
 # Maven:清华源下载二进制,解压进镜像(slim 无 curl,用 python urllib)
