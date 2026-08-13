@@ -63,9 +63,20 @@ def main(argv: list[str] | None = None) -> int:
             print("提示:先 `harness creds set` 录入凭据,并准备 config.yaml。", file=sys.stderr)
             return 2
         mem = Memory(cfg.memory.fixes_path, cfg.memory.conventions_path, cfg.memory.retrieve_top_k)
-        loop = AgentLoop(llm=OpenAICompatibleClient(Creds()), config=cfg, memory=mem)
+
+        def _on_event(e: dict) -> None:
+            # CLI 输出 agent 过程:文字回复 / 工具动作,让用户看到做了什么。
+            if e.get("type") == "response" and e.get("text"):
+                print(f"🤖 {e['text']}", flush=True)
+            elif e.get("type") == "action":
+                icon = {"ReadFile": "📖", "WriteFile": "✏️", "RunTests": "🧪",
+                        "ListDir": "📂", "SearchFile": "🔍", "RunShell": "⚡"}.get(e.get("action", ""), "🔧")
+                path = e.get("path") or ""
+                print(f"  {icon} {e.get('action')} {path} | {e.get('intent', '')}", flush=True)
+
+        loop = AgentLoop(llm=OpenAICompatibleClient(Creds()), config=cfg, memory=mem, on_event=_on_event)
         result = loop.run(task, ts_provider=lambda: "2026-07-22T00:00:00")
-        print(result.outcome)
+        print(f"\n==> outcome: {result.outcome}")
         return 0 if result.outcome == "success" else 1
     print(f"未知命令: {cmd}", file=sys.stderr)
     return 2
