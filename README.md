@@ -149,65 +149,16 @@ docker run -p 8000:8000 coding-agent-harness
 
 CI 双平台配置:`.gitlab-ci.yml`(GitLab CI,含 `unit-test` + `build-image` job)与 `.github/workflows/ci.yml`(GitHub Actions,含 `unit-test` + `build-image` job)。`build-image` 在 `main` 分支且 `Dockerfile` 存在时自动跑(§4.10)。
 
-## 部署架构
+## 线上 WebUI
 
-云部署用阿里云轻量应用服务器 / ECS(通用 §4.11):
+**项目网址**:http://116.62.58.112 (mock 模式 WebUI,无需 key 即可访问,可直接体验 agent 对话)
 
-### 准备工作
+使用方式:
 
-1. 阿里云账号 + 一台轻量应用服务器或 ECS(最低配置即可,1 核 1G 够用)
-2. 安全组放行 80 端口(HTTP)
-3. 服务器安装 Docker:
-   ```bash
-   # 在服务器上执行
-   curl -fsSL https://get.docker.com | sh
-   ```
-
-### 一键部署
-
-```bash
-# 设置服务器 IP,然后部署
-export ALIYUN_HOST=47.96.x.x        # 换成你的服务器公网 IP
-export ALIYUN_USER=root
-sh scripts/deploy-aliyun.sh
-```
-
-脚本自动完成:本地构建镜像 → 上传到服务器 → 启动容器(映射 80→8000,mock 模式无需 key)。
-
-### 阿里云容器镜像服务(ACR,可选)
-
-如果要在多台机器间分发或走 CI/CD,可以将镜像推送到 ACR:
-```bash
-# 登录 ACR
-docker login --username=<阿里云账号> registry.cn-hangzhou.aliyuncs.com
-# 打标签 + 推送
-docker tag coding-agent-harness registry.cn-hangzhou.aliyuncs.com/<命名空间>/coding-agent-harness:latest
-docker push registry.cn-hangzhou.aliyuncs.com/<命名空间>/coding-agent-harness:latest
-```
-
-- CI/CD:`unit-test` job 每次 push/PR 跑测试(§4.8);`build-image` job 在 main 构建推送镜像。
-- **线上部署 URL**:`http://116.62.58.112`(阿里云轻量服务器,mock 模式 WebUI,无需 key 即可访问)。
-
-### 服务器端使用说明
-
-部署后 WebUI 运行在容器内,支持:
-
-**工作目录选择**:点 📁 → 原生选择器在无 GUI 服务器不可用 → 弹输入框**手动输入服务器上的绝对路径**(如 `/app/demo-projects/105-01-kwic-mainprogram`)。默认工作区由 `HARNESS_PROJECT_ROOT` 指定:
-
-```bash
-docker run -e HARNESS_PROJECT_ROOT=/app/demo-projects/105-01-kwic-mainprogram ...
-```
-
-**演示项目挂载**:把本地项目打包上传到服务器,挂载进容器供 agent 读写:
-
-```bash
-# 服务器上:tar 打包上传(排除编译产物)
-# 挂载:docker run -v /root/demo-projects:/app/demo-projects ...
-```
-
-**容器内工具链**:镜像含 Python 3.12 + Java 17 + Maven 3.9(agent 可修改并测试 Java 项目,`mvn -B test` 输出干净供校验器解析)。Maven 依赖已 warmup 缓存进镜像,运行时秒级。
-
-**real 模式**:WebUI 点 🔑 录入凭据(经文件后端存到挂载卷)→ 顶栏切 real → agent 用真实 LLM 执行。
+- **工作目录**:点 📁 → 无 GUI 服务器弹输入框,手动输入服务器上的绝对路径(如 `/app/demo-projects/105-01-kwic-mainprogram`,服务器已预置 7 个 KWIC 演示项目)
+- **直接对话**:输入「列出文件」「阅读并完成代码」等,agent 实时显示工具动作 + markdown 回复
+- **real 模式**:点 🔑 录入凭据 → 顶栏切 real → 用真实 LLM 执行(凭据经文件后端存挂载卷,重启不丢)
+- **演示项目**:服务器预置 7 个 KWIC 风格作业(主程序/OO/管道过滤器/分层/MVC 等),含 TODO 填空,适合演示「反馈闭环」完整流程
 
 ## 目录结构
 
