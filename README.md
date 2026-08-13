@@ -116,7 +116,7 @@ docker push registry.cn-hangzhou.aliyuncs.com/<命名空间>/coding-agent-harnes
 ```
 
 - CI/CD:`unit-test` job 每次 push/PR 跑测试(§4.8);`build-image` job 在 main 构建推送镜像。
-- **线上部署 URL**:`http://<你的服务器公网 IP>`(部署后填入)。
+- **线上部署 URL**:`http://116.62.58.112`(阿里云轻量服务器,mock 模式 WebUI,无需 key 即可访问)。
 
 ## 目录结构
 

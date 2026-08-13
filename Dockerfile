@@ -11,8 +11,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# uv:用官方镜像拷二进制,避免 pip 装 uv
-COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
+# uv:用 pip 安装(避免依赖 ghcr.io——服务器连 GitHub 生态可能不通);
+# pip 从 PyPI 装,更通用。
+RUN pip install --no-cache-dir uv
 
 # 先拷依赖锁(利用缓存层:改源码不重装依赖)
 COPY pyproject.toml uv.lock ./
