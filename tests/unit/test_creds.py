@@ -22,12 +22,15 @@ def test_set_get_clear(monkeypatch):
 
 
 def test_creds_no_keyring_backend_fallback(monkeypatch):
-    """容器无 keyring 后端(NoKeyringError)→ 所有方法容错为未配置,不抛异常。"""
+    """容器无 keyring 后端(get_password 抛 NoKeyringError)→ 所有方法容错为未配置,不抛异常。"""
     import keyring
     from coding_agent_harness.creds.keychain import Creds
-    def boom():
+    def boom(*a, **k):
         raise keyring.errors.NoKeyringError("no backend")
-    monkeypatch.setattr("coding_agent_harness.creds.keychain.keyring.get_keyring", boom)
+    # 无后端时 get_keyring 返回 fail 后端,抛错的是 get_password/set_password 等
+    monkeypatch.setattr("coding_agent_harness.creds.keychain.keyring.get_password", boom)
+    monkeypatch.setattr("coding_agent_harness.creds.keychain.keyring.set_password", boom)
+    monkeypatch.setattr("coding_agent_harness.creds.keychain.keyring.delete_password", boom)
     c = Creds()
     assert c.status() == {"set": False}
     assert c.info() == {"configured": False, "base_url": "", "model": ""}

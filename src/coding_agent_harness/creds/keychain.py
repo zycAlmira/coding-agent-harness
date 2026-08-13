@@ -15,9 +15,14 @@ SERVICE = "coding-agent-harness"
 
 
 def _keyring_available() -> bool:
-    """keyring 是否有可用后端(容器内无 Keychain/Secret Service 时返回 False)。"""
+    """keyring 是否有可用后端(容器内无 Keychain/Secret Service 时返回 False)。
+
+    注意:keyring.get_keyring() 在无后端时返回 fail 后端(不抛异常),
+    真正抛 NoKeyringError 的是 get_password/set_password 等操作——
+    故须用 try/except 包实际调用。
+    """
     try:
-        keyring.get_keyring()
+        keyring.get_password(SERVICE, "__probe__")
         return True
     except Exception:
         return False
