@@ -11,6 +11,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# 多语言工具链:Java/Maven(agent 可修改并测试 Java 项目)、Node(可选)。
+# 服务器连 GitHub 生态可能不通,故用 apt 装(阿里云 debian 源,通用)。
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-17-jdk-headless maven nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
 # uv:用 pip 安装(避免依赖 ghcr.io——服务器连 GitHub 生态可能不通);
 # pip 从 PyPI 装,更通用。
 RUN pip install --no-cache-dir uv
