@@ -5,6 +5,7 @@
 - run <task>: 用真实 LLM 跑一次任务,打印 outcome。
 """
 from __future__ import annotations
+import os
 import sys
 from coding_agent_harness.creds.keychain import Creds
 
@@ -19,8 +20,9 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
         from coding_agent_harness.web.app import create_app
         use_mock = "--real" not in argv
-        # --project-root <path>:指定 agent 工作目录,默认 ./workspace
-        root = "./workspace"
+        # --project-root <path>:指定 agent 工作目录,默认 ./workspace;
+        # 环境变量 HARNESS_PROJECT_ROOT 可覆盖(容器部署设默认演示项目)。
+        root = os.environ.get("HARNESS_PROJECT_ROOT", "./workspace")
         if "--project-root" in argv:
             idx = argv.index("--project-root")
             if idx + 1 < len(argv):
