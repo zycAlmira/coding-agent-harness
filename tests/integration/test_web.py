@@ -68,3 +68,16 @@ def test_hitl_approve_deletes_file(tmp_path):
         time.sleep(0.1)
     assert deleted, "审批通过后应真删 calc.py"
 
+
+
+def test_workspace_picker_manual_path(tmp_path):
+    """无 GUI 服务器:workspace_picker 支持前端传 path 手动指定(手动输入兜底)。"""
+    app = create_app(project_root=tmp_path, use_mock=True)
+    c = TestClient(app)
+    r = c.post("/api/workspace/picker", json={"workspace": str(tmp_path)})
+    assert r.status_code == 200
+    assert r.json()["ok"] and r.json()["manual"]
+    assert r.json()["path"] == str(tmp_path)
+    # 非绝对路径拒绝
+    r = c.post("/api/workspace/picker", json={"workspace": "relative/path"})
+    assert r.status_code == 400

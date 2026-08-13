@@ -1063,19 +1063,33 @@
         if (!r.ok) return r.json().then(e => { throw new Error(e.detail || '取消'); });
         return r.json();
       }).then(d => {
-        document.getElementById('wsLabel').textContent = d.path.split('/').pop() || d.path;
-        document.getElementById('btnWorkspace').title = '工作目录: ' + d.path;
-        updateStat('stStatus', '工作区已切换');
-        loadFileTree();
-        loadConfig();  // 刷新配置信息
-        // 工作区已切换:当前对话上下文绑定旧工作区,自动开始新对话避免错位
-        newSession();
-        const ec = document.getElementById('emptyChat');
-        if (ec) ec.insertAdjacentHTML('beforeend',
-          `<div class="sub" style="color:var(--accent)">✅ 已切换到 ${esc(d.path.split('/').pop()||'新')} 工作区,已自动开始新对话</div>`);
+        applyWorkspace(d);
       }).catch(e => {
-        if (e.message !== '取消') alert('选择工作目录失败: ' + e.message);
+        // 原生选择器不可用(无 GUI 服务器):改为手动输入路径
+        if (e.message === '取消') return;
+        const manual = prompt('选择器不可用(无图形界面),请手动输入服务器上的绝对路径:\n如 /root/my-project', '/root');
+        if (manual && manual.trim()) {
+          fetch('/api/workspace/picker', {method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({workspace: manual.trim()})})
+            .then(r => r.json()).then(d => applyWorkspace(d))
+            .catch(e2 => alert('设置工作目录失败: ' + (e2.message || e2.detail || '')));
+        } else {
+          alert('选择工作目录失败: ' + e.message);
+        }
       });
+    }
+
+    function applyWorkspace(d) {
+      document.getElementById('wsLabel').textContent = d.path.split('/').pop() || d.path;
+      document.getElementById('btnWorkspace').title = '工作目录: ' + d.path;
+      updateStat('stStatus', '工作区已切换');
+      loadFileTree();
+      loadConfig();  // 刷新配置信息
+      // 工作区已切换:当前对话上下文绑定旧工作区,自动开始新对话避免错位
+      newSession();
+      const ec = document.getElementById('emptyChat');
+      if (ec) ec.insertAdjacentHTML('beforeend',
+        `<div class="sub" style="color:var(--accent)">✅ 已切换到 ${esc(d.path.split('/').pop()||'新')} 工作区,已自动开始新对话</div>`);
     }
 
     function toggleMode() {

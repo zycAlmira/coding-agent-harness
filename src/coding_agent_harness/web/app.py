@@ -492,12 +492,20 @@ def create_app(
     # ═══════════════════════════════════════════
 
     @app.post("/api/workspace/picker")
-    def workspace_picker():
-        """打开系统原生文件夹选择器(macOS 访达/Win 资源管理器),返回所选路径。"""
+    def workspace_picker(req: WorkspaceSwitchReq | None = None):
+        """选择工作目录:原生文件夹选择器(macOS/Win);Linux 无 GUI 时支持
+        前端传 workspace 手动指定(服务器部署无桌面环境,zenity 不可用)。"""
         import platform
         import subprocess
         system = platform.system()
         try:
+            # 前端传 workspace:直接使用(无 GUI 服务器的手动输入兜底)
+            if req and req.workspace and req.workspace.strip():
+                path = req.workspace.strip().rstrip("/")
+                if not path.startswith("/"):
+                    raise HTTPException(status_code=400, detail="路径必须是绝对路径(以 / 开头)")
+                _workspace["path"] = path
+                return {"path": path, "ok": True, "manual": True}
             if system == "Darwin":
                 # macOS: 用 AppleScript 调用访达选择文件夹
                 script = (
