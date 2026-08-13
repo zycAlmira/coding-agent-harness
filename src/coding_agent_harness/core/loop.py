@@ -72,7 +72,7 @@ _AGENT_TOOLS = [
         "type": "object",
         "properties": {
             "path": {"type": "string", "description": "可选:只运行指定测试文件或目录(相对项目根,如 test_calc.py);省略则运行全部测试"},
-            "test_command": {"type": "string", "description": "可选:测试命令。Python 用 pytest(默认);Java 用 mvn test;Node 用 npm test;Go 用 go test"},
+            "test_command": {"type": "string", "description": "可选:测试命令。Python 用 pytest(默认);Java 用 mvn -B test(batch 模式禁进度条,输出干净);Node 用 npm test;Go 用 go test"},
             **_INTENT_PROP,
         },
         "required": ["intent"],
@@ -166,7 +166,7 @@ class AgentLoop:
             "\n- 「列出/查看 xxx 文件的内容」:调 read_file 读该文件 → 回复内容或概述 → stop。**不要读其他文件。**大文件被截断时用 offset/lines 参数分段读取,不要重复整读;已读过的行区间不要重复读,用 offset 继续读未读部分。"
             "\n- **定位代码先 search_file**:一次找到所有匹配位置与行号,再只读相关行区间(offset/lines)。**不要逐段读全文拼凑**——那是低效且浪费轮数的方式。"
             "\n- 修复/改代码:读→改→跑测试→总结→stop;先看懂再改。"
-            "\n- 只跑指定测试:run_tests 带 path 参数。"
+            "\n- 只跑指定测试:run_tests 带 path 参数;Java 项目用 test_command=\"mvn -B test\"(batch 模式,输出干净无进度条,校验器解析更准)。"
             "\n- 分析/评估项目:读 1-3 个关键文件→给出分析→stop;不改代码,不跑测试(除非用户要求)。"
             "\n- 衔接词(继续/然后呢/为什么):基于上一步结果继续;上一步失败则修复重测,完成则总结。"
             "\n- 多任务(先…再…):逐个完成,全部完成后统一总结。"

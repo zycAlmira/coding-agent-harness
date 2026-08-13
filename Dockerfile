@@ -20,7 +20,12 @@ ENV JAVA_HOME=/opt/jdk17 \
 # Maven:清华源下载二进制,解压进镜像(slim 无 curl,用 python urllib)
 RUN python -c "import urllib.request; urllib.request.urlretrieve('https://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz', '/tmp/maven.tar.gz')" \
     && tar xzf /tmp/maven.tar.gz -C /opt/ && rm /tmp/maven.tar.gz \
-    && ln -s /opt/apache-maven-3.9.16/bin/mvn /usr/local/bin/mvn
+    && ln -s /opt/apache-maven-3.9.16/bin/mvn /usr/local/bin/mvn \
+    # warmup:maven 本地仓库预置(首次 mvn test 下载依赖 ~3 分钟,预跑一次缓存进镜像)
+    && mkdir -p /warmup && cd /warmup \
+    && printf '<?xml version="1.0"?><project><modelVersion>4.0.0</modelVersion><groupId>w</groupId><artifactId>w</artifactId><version>1</version></project>' > pom.xml \
+    && mvn -B -q dependency:resolve 2>/dev/null || true \
+    && rm -rf /warmup
 
 # uv:用 pip 安装(避免依赖 ghcr.io——服务器连 GitHub 生态可能不通);
 # pip 从阿里云 PyPI 镜像源装(服务器外网到 PyPI 不通,阿里云内网快)。

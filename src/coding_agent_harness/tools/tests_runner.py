@@ -54,7 +54,8 @@ def run_tests(config: Config, path: str | None = None, test_command: str | None 
     start = time.monotonic()
     # test_command 是字符串命令(含空格),用 shell=True;pytest 走 list(无 shell)
     use_shell = isinstance(cmd, str)
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False, env=env, shell=use_shell)
+    # 超时 300s:maven 首次下载依赖可能 ~3 分钟,120s 会误杀导致测试无输出
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False, env=env, shell=use_shell)
     dur = time.monotonic() - start
     return PytestRun(
         exit_code=proc.returncode,
