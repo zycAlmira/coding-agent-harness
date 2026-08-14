@@ -18,15 +18,29 @@ class LLMConfig:
 
 @dataclass(frozen=True)
 class GuardrailsConfig:
-    """治理护栏配置:回合上限、重复类别处置、无变化停机、审批超时、shell 黑白名单。"""
+    """治理护栏配置:回合上限、重复类别处置、无变化停机、审批超时、shell 黑白名单。
 
-    max_rounds: int = 8
+    max_rounds:软上限——达到时注入「尽快收尾」提示,不终止(复杂任务可继续)。
+    hard_max_rounds:硬上限——真正强制终止的安全阀(防死循环;stuck 兜底通常更早触发)。
+    """
+
+    max_rounds: int = 20
+    hard_max_rounds: int = 60
     same_category_prompt_at: int = 2
     same_category_stop_at: int = 3
     no_change_stop_at: int = 2
     approval_timeout_sec: int = 300
     shell_blacklist: list[str] = field(default_factory=lambda: ["rm -rf"])
-    shell_whitelist: list[str] = field(default_factory=lambda: ["pytest"])
+    # 白名单(精确首词匹配):测试/构建/只读命令,agent 可在护栏内自主组织多语言构建;
+    # 危险命令(rm -rf 等)仍在黑名单,其余命令需审批。
+    shell_whitelist: list[str] = field(
+        default_factory=lambda: [
+            "pytest", "ruff", "mypy",          # Python 测试/静态检查
+            "mvn", "gradle", "javac", "java",   # Java 构建/编译/运行
+            "npm", "npx", "node", "yarn",       # Node 生态
+            "go",                                # Go
+            "git",                               # git status/diff/log 等只读
+        ])
 
 
 @dataclass(frozen=True)

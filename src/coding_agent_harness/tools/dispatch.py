@@ -2,7 +2,7 @@
 from __future__ import annotations
 from coding_agent_harness.config import Config
 from coding_agent_harness.models import (
-    Action, ReadFile, WriteFile, DeleteFile, ListDir, RunShell, RunTests, Stop, Respond, ToolResult,
+    Action, ReadFile, WriteFile, DeleteFile, ListDir, SearchFile, RunShell, RunTests, Stop, Respond, ToolResult,
 )
 from coding_agent_harness.tools import files, shell, tests_runner
 
@@ -20,12 +20,18 @@ def dispatch(action: Action, config: Config) -> ToolResult:
             return files.delete_file(action, root)
         case ListDir():
             return files.list_dir(action, root)
+        case SearchFile():
+            return files.search_file(action, root)
         case RunShell():
             return shell.run_shell(action)
         case RunTests():
-            # 跑 pytest,把结构化结果 PytestRun 塞进 ToolResult.structured,
-            # ok 由退出码判定,output 回灌 stdout 供反馈校验器解析。
-            tr = tests_runner.run_tests(config)
+            # 跑测试(支持多语言 test_command),把结构化结果 PytestRun 塞进
+            # ToolResult.structured,ok 由退出码判定,output 回灌 stdout 供反馈校验器解析。
+            # path 可指定单文件/目录;越界路径由 run_tests 拒绝,转为错误回灌。
+            try:
+                tr = tests_runner.run_tests(config, action.path, action.test_command)
+            except ValueError as e:
+                return ToolResult(ok=False, output="", error=str(e))
             return ToolResult(ok=tr.exit_code == 0, output=tr.stdout, structured=tr, error=None)
         case Stop():
             # 停机动作:回灌 stop 标记与原因,主循环据此停机。

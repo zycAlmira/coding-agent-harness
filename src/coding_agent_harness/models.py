@@ -39,17 +39,29 @@ class RunShell:
 
 @dataclass(frozen=True)
 class RunTests:
-    pass
+    path: str | None = None  # 可选:只跑指定测试文件/目录(相对 project_root),None 跑全套
+    test_command: str | None = None  # 可选:测试命令,支持 pytest/mvn test/npm test/go test;None 用默认 pytest
 
 
 @dataclass(frozen=True)
 class ReadFile:
     path: str
+    offset: int | None = None  # 可选:起始行号(1-based,默认 1)
+    lines: int | None = None   # 可选:读取行数(默认读全文,受输出截断限制)
 
 
 @dataclass(frozen=True)
 class ListDir:
     path: str
+    recursive: bool | None = None  # 可选:true 一次列出整个目录树,避免多次逐层探索
+
+
+@dataclass(frozen=True)
+class SearchFile:
+    """按内容搜索文件,返回匹配行+行号(agent 定位 TODO/方法,免逐段读全文)。"""
+    path: str
+    pattern: str
+    context: int | None = None  # 可选:匹配行上下各取几行
 
 
 @dataclass(frozen=True)
@@ -64,16 +76,24 @@ class Respond:
 
 
 # Action 联合类型:LLM 一轮可能产出的所有动作变体。
-Action = Union[WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, Stop, Respond]
+Action = Union[WriteFile, DeleteFile, RunShell, RunTests, ReadFile, ListDir, SearchFile, Stop, Respond]
 
 
 # --- LLM 一次产出 ---
 @dataclass
 class AssistantTurn:
-    """LLM 一次回合:解析出的动作、意图说明、原始文本。"""
+    """LLM 一次回合:解析出的动作、意图说明、原始文本。
+
+    text: 动作伴随的文字说明(OpenAI 协议允许 content 与 tool_calls 同时返回,
+    即"我先看看目录结构"这类工具调用前的说明)。Respond 动作时即回复文本。
+    actions: 多个动作(OpenAI 协议允许一次返回多个 tool_calls,批处理减少
+    往返——LLM 一次输出多个 read_file 等,逐个执行)。缺省用单个 action。
+    """
     action: Action
     intent: str
     raw: str
+    text: str | None = None
+    actions: list[tuple[Action, str]] | None = None  # 批处理:(动作, intent) 对
 
 
 # --- 护栏判定 ---

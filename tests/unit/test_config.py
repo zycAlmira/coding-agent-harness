@@ -26,7 +26,7 @@ def test_load_config_applies_defaults_when_missing(tmp_path):
     f = tmp_path / "c.yaml"
     f.write_text("project_root: ./ws\nllm: {base_url: 'http://x', model: m}\n")
     cfg = load_config(f)
-    assert cfg.guardrails.max_rounds == 8  # 默认
+    assert cfg.guardrails.max_rounds == 20  # 默认
     assert cfg.guardrails.same_category_stop_at == 3
 
 
@@ -70,5 +70,5 @@ def test_none_value_falls_back_to_default(tmp_path):
         "  max_traceback_excerpt_lines:\n"  # 显式空值
     )
     cfg = load_config(f)
-    assert cfg.guardrails.max_rounds == 8  # 默认
+    assert cfg.guardrails.max_rounds == 20  # 默认
     assert cfg.feedback.max_traceback_excerpt_lines == 8  # 默认

@@ -34,6 +34,9 @@ def test_guardrail_intercepts_delete_and_propagates_intent(tmp_path):
     mem = Memory(str(ws / "fixes.json"), str(ws / "conv.json"), 3)
     loop = AgentLoop(llm=mock, config=cfg, memory=mem, on_event=events.append)
     loop.run(task="删 calc", ts_provider=lambda: "2026-07-22T00:00:00")
-    assert any(e["type"] == "guardrail_verdict" and e["verdict"] == "NeedsApproval" for e in events)
-    assert events[0]["intent"] == "该文件被取代,删除以避免混淆"  # intent 随事件上送
+    # 事件协议:guardrail_verdict/tool_result 合并为单个 action 事件(带动作名+护栏判定)
+    act = [e for e in events if e["type"] == "action" and e["action"] == "DeleteFile"]
+    assert act, "应发 DeleteFile 的 action 事件"
+    assert act[0]["verdict"] == "NeedsApproval"
+    assert act[0]["intent"] == "该文件被取代,删除以避免混淆"  # intent 随事件上送
     assert (ws / "calc.py").exists()  # 非 HITL 模式只回灌"需审批"字符串,没真删

@@ -1,0 +1,13 @@
+[INFO] Scanning for projects...
+[INFO] Building kwic 1.0-SNAPSHOT
+[INFO] --- surefire:3.0.0-M7:test (default-test) @ kwic ---
+[INFO] Running KWICTest
+[ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.05 s <<< FAILURE!
+[ERROR] testShift  Time elapsed: 0.02 s  <<< FAILURE!
+KWICTest.java:45: expected:<[2, 1]> but was:<[1, 2]>
+    at KWICTest.testShift(KWICTest.java:45)
+[INFO]
+[INFO] Results:
+[INFO] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0
+[INFO]
+[INFO] BUILD FAILURE
